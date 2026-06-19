@@ -13,23 +13,26 @@ const tempRoot = await mkdtemp(path.join(os.tmpdir(), "acp-dispatcher-smoke-"));
 const tempHome = path.join(tempRoot, "home");
 const tempWorktree = path.join(tempRoot, "worktree");
 const tempBin = path.join(tempRoot, "bin");
+const tempOldBin = path.join(tempRoot, "old-bin");
 
 try {
   await mkdir(tempHome, { recursive: true });
   await mkdir(tempWorktree, { recursive: true });
   await mkdir(tempBin, { recursive: true });
+  await mkdir(tempOldBin, { recursive: true });
   await execFileAsync("git", ["-C", tempWorktree, "init", "-b", "master"]);
   await createFakeOpenCode(tempBin);
-  await createFakeClaude(tempBin);
+  await createFakeClaude(tempOldBin, { version: "fake-claude 0.0.1", fail: true });
+  await createFakeClaude(tempBin, { version: "fake-claude 999.0.0" });
   await createFakeCursorAgent(tempBin);
   await createFakeCodex(tempBin);
 
-  const result = await runMcpSmoke(tempHome, tempWorktree, tempBin);
+  const result = await runMcpSmoke(tempHome, tempWorktree, [tempOldBin, tempBin]);
   console.log(JSON.stringify(result, null, 2));
 
   if (
     result.stderr
-    || result.serverVersion !== "0.4.1"
+    || result.serverVersion !== "0.4.2"
     || result.discoveryCount < 1
     || result.runStatus !== "completed"
     || result.adapterStatus !== "opencode_acp"
@@ -39,6 +42,7 @@ try {
     || !result.failureReason?.includes("Insufficient balance")
     || !result.agentErrors?.some((error) => error.includes("Rate limit exceeded"))
     || !result.failureAvailableModels?.some((model) => model.value === "opencode-go/glm-5.2")
+    || result.claudeDiscoveredVersion !== "fake-claude 999.0.0"
     || result.claudeStatus !== "completed"
     || result.claudeAdapterStatus !== "claude_cli"
     || result.claudeProviderSessionId !== "fake-claude-session"
@@ -59,7 +63,7 @@ async function createFakeOpenCode(binDir) {
   const scriptPath = path.join(binDir, "opencode");
   const script = `#!/usr/bin/env node
 if (process.argv.includes("--version")) {
-  console.log("fake-opencode 0.0.0");
+  console.log("fake-opencode 999.0.0");
   process.exit(0);
 }
 process.stdin.setEncoding("utf8");
@@ -98,12 +102,16 @@ function write(message) {
   await chmod(scriptPath, 0o755);
 }
 
-async function createFakeClaude(binDir) {
+async function createFakeClaude(binDir, { version, fail = false }) {
   const scriptPath = path.join(binDir, "claude");
   const script = `#!/usr/bin/env node
 if (process.argv.includes("--version") || process.argv.includes("-v")) {
-  console.log("fake-claude 0.0.0");
+  console.log(${JSON.stringify(version)});
   process.exit(0);
+}
+if (${JSON.stringify(fail)}) {
+  console.error("old fake Claude should not be selected");
+  process.exit(1);
 }
 console.log(JSON.stringify({ type: "assistant", session_id: "fake-claude-session", message: { content: [{ type: "text", text: "Fake Claude completed." }] } }));
 `;
@@ -115,7 +123,7 @@ async function createFakeCursorAgent(binDir) {
   const scriptPath = path.join(binDir, "agent");
   const script = `#!/usr/bin/env node
 if (process.argv.includes("--version") || process.argv.includes("-v")) {
-  console.log("fake-agent 0.0.0");
+  console.log("fake-agent 999.0.0");
   process.exit(0);
 }
 console.log(JSON.stringify({ type: "message", sessionId: "fake-cursor-session", message: "Fake Cursor Agent completed." }));
@@ -128,7 +136,7 @@ async function createFakeCodex(binDir) {
   const scriptPath = path.join(binDir, "codex");
   const script = `#!/usr/bin/env node
 if (process.argv.includes("--version") || process.argv.includes("-V")) {
-  console.log("fake-codex 0.0.0");
+  console.log("fake-codex 999.0.0");
   process.exit(0);
 }
 console.log(JSON.stringify({ type: "agent_message", session_id: "fake-codex-session", message: "Fake Codex completed." }));
@@ -137,12 +145,12 @@ console.log(JSON.stringify({ type: "agent_message", session_id: "fake-codex-sess
   await chmod(scriptPath, 0o755);
 }
 
-async function runMcpSmoke(home, worktree, binDir) {
+async function runMcpSmoke(home, worktree, binDirs) {
   const { spawn } = await import("node:child_process");
   const child = spawn("node", ["./mcp/server.mjs"], {
     cwd: repoRoot,
     stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, HOME: home, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` }
+    env: { ...process.env, HOME: home, PATH: `${binDirs.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ""}` }
   });
   let stdout = "";
   let stderr = "";
@@ -277,6 +285,7 @@ async function runMcpSmoke(home, worktree, binDir) {
     stderr: stderr.trim(),
     serverVersion: init?.result?.serverInfo?.version,
     discoveryCount: parsedToolResults[3]?.agents?.length ?? 0,
+    claudeDiscoveredVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "claude")?.version,
     runStatus: parsedToolResults[4]?.status,
     adapterStatus: parsedToolResults[4]?.adapterStatus,
     providerSessionId: parsedToolResults[4]?.providerSessionId,

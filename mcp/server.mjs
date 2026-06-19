@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "acp-coding-agent-dispatcher";
-const SERVER_VERSION = "0.4.1";
+const SERVER_VERSION = "0.4.2";
 const DATA_DIR = process.env.AGENT_DISPATCHER_DATA_DIR
   ? path.resolve(process.env.AGENT_DISPATCHER_DATA_DIR)
   : path.join(os.homedir(), ".codex", "agent-dispatcher");
@@ -686,32 +686,63 @@ async function validateWorktree(worktree) {
   }
 }
 
-async function findExecutable(binary, pathEntries) {
+async function findExecutables(binary, pathEntries) {
+  const seen = new Set();
+  const candidates = [];
   for (const entry of pathEntries) {
     const candidate = path.join(entry, binary);
     try {
       await fs.access(candidate, fsConstants.X_OK);
-      return candidate;
+      const realPath = await fs.realpath(candidate).catch(() => candidate);
+      if (seen.has(realPath)) continue;
+      seen.add(realPath);
+      candidates.push(candidate);
     } catch {
       continue;
     }
   }
-  return null;
+  return candidates;
+}
+
+async function selectExecutable(agent, pathEntries) {
+  const candidates = await findExecutables(agent.executable, pathEntries);
+  if (candidates.length === 0) {
+    return {
+      installedPath: null,
+      version: null,
+      note: null,
+      candidates: []
+    };
+  }
+
+  const probes = await Promise.all(candidates.map(async (candidate) => ({
+    path: candidate,
+    ...(await probeVersion(candidate, agent.versionArgs))
+  })));
+  const sorted = [...probes].sort(compareExecutableProbe);
+  const selected = sorted[0];
+  const skipped = sorted.slice(1).map((probe) => probe.version ? `${probe.path} (${probe.version})` : probe.path);
+  return {
+    installedPath: selected.path,
+    version: selected.version,
+    note: selected.note,
+    candidates: probes,
+    selectionNote: skipped.length > 0 ? `Selected ${selected.path}; skipped ${skipped.join(", ")}` : null
+  };
 }
 
 async function probeAgent(agent, config, pathEntries) {
-  const installedPath = await findExecutable(agent.executable, pathEntries);
+  const selection = await selectExecutable(agent, pathEntries);
+  const installedPath = selection.installedPath;
   const disabled = config.disabledAgents.includes(agent.id);
   const notes = installedPath ? [`Found at ${installedPath}`] : agent.notes;
-  const versionProbe = installedPath
-    ? await probeVersion(installedPath, agent.versionArgs)
-    : { version: null, note: null };
-  if (versionProbe.note) notes.push(versionProbe.note);
+  if (selection.selectionNote) notes.push(selection.selectionNote);
+  if (selection.note) notes.push(selection.note);
   return {
     id: agent.id,
     displayName: agent.displayName,
     status: disabled ? "disabled" : installedPath ? "available" : "not_installed",
-    version: versionProbe.version,
+    version: selection.version,
     installedPath,
     transport: agent.transport,
     command: agent.command,
@@ -720,6 +751,30 @@ async function probeAgent(agent, config, pathEntries) {
     icon: null,
     notes
   };
+}
+
+function compareExecutableProbe(a, b) {
+  const versionComparison = compareVersionStrings(b.version, a.version);
+  if (versionComparison !== 0) return versionComparison;
+  return a.path.localeCompare(b.path);
+}
+
+function compareVersionStrings(a, b) {
+  const parsedA = parseVersionParts(a);
+  const parsedB = parseVersionParts(b);
+  const length = Math.max(parsedA.length, parsedB.length);
+  for (let index = 0; index < length; index += 1) {
+    const left = parsedA[index] ?? 0;
+    const right = parsedB[index] ?? 0;
+    if (left !== right) return left - right;
+  }
+  return 0;
+}
+
+function parseVersionParts(value) {
+  const match = String(value ?? "").match(/\d+(?:\.\d+){0,3}/);
+  if (!match) return [];
+  return match[0].split(".").map((part) => Number.parseInt(part, 10)).filter(Number.isFinite);
 }
 
 async function probeVersion(executablePath, versionArgs) {
@@ -1750,13 +1805,25 @@ function sleep(ms) {
 }
 
 function safeEnv() {
-  return {
+  const env = {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? os.homedir(),
     LANG: process.env.LANG ?? "C.UTF-8",
     LC_ALL: process.env.LC_ALL ?? "C.UTF-8"
   };
+  for (const key of AGENT_ENV_ALLOWLIST) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  return env;
 }
+
+const AGENT_ENV_ALLOWLIST = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+  "ANTHROPIC_BASE_URL",
+  "CLAUDE_CODE_OAUTH_TOKEN",
+  "CLAUDE_CONFIG_DIR"
+];
 
 function chooseAgent(agents, config, mode) {
   const disabled = new Set(config.disabledAgents ?? []);
