@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "acp-coding-agent-dispatcher";
-const SERVER_VERSION = "0.5.2";
+const SERVER_VERSION = "0.5.3";
 const DATA_DIR = process.env.AGENT_DISPATCHER_DATA_DIR
   ? path.resolve(process.env.AGENT_DISPATCHER_DATA_DIR)
   : path.join(os.homedir(), ".codex", "agent-dispatcher");
@@ -776,8 +776,27 @@ async function listSessions(args) {
     .filter((session) => !args.agent || session.agentId === args.agent)
     .filter((session) => !args.worktree || session.worktree === args.worktree)
     .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(compactSessionForList);
   return { sessions };
+}
+
+function compactSessionForList(session) {
+  return {
+    sessionId: session.sessionId,
+    providerSessionId: session.providerSessionId ?? null,
+    agentId: session.agentId,
+    title: session.title,
+    status: session.status,
+    worktree: session.worktree,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lastJobId: session.lastJobId,
+    source: session.source,
+    canContinue: session.canContinue,
+    availableModelCount: Array.isArray(session.availableModels) ? session.availableModels.length : 0,
+    configOptionCount: Array.isArray(session.agentConfigOptions) ? session.agentConfigOptions.length : 0
+  };
 }
 
 async function continueSession(args) {

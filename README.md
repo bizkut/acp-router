@@ -51,12 +51,15 @@ Real E2E scripts call external agents and may incur model cost. They create a te
 
 ```bash
 npm run e2e:opencode -- --opencode-model opencode-go/glm-5.2 --keep
+npm run e2e:sessions:opencode -- --keep
 npm run e2e:claude -- --timeout-sec 600 --keep
 npm run e2e:cursor -- --timeout-sec 600 --keep
 npm run e2e:codex -- --timeout-sec 600 --keep
 ```
 
 Omit `--keep` to clean successful runs automatically. Failed runs are always kept for inspection.
+
+`npm run e2e:sessions:opencode` runs two real OpenCode ACP jobs against the same dispatcher session, defaults the temporary project to `opencode-go/glm-5.2`, verifies provider session resume through the `acp_session_resumed` event, then archives the session.
 
 The plugin manifest can be checked locally with:
 
