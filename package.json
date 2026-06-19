@@ -1,14 +1,19 @@
 {
   "name": "acp-coding-agent-dispatcher",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Local Codex plugin for discovering coding agents and dispatching OpenCode over ACP.",
   "scripts": {
     "start:mcp": "node ./mcp/server.mjs",
-    "check": "node --check ./mcp/server.mjs",
+    "check": "node --check ./mcp/server.mjs && node --check ./scripts/smoke.mjs && node --check ./scripts/opencode-acp-handshake.mjs && node --check ./scripts/e2e-dispatcher.mjs",
     "smoke": "node ./scripts/smoke.mjs",
-    "smoke:opencode": "node ./scripts/opencode-acp-handshake.mjs"
+    "smoke:opencode": "node ./scripts/opencode-acp-handshake.mjs",
+    "e2e": "node ./scripts/e2e-dispatcher.mjs",
+    "e2e:opencode": "node ./scripts/e2e-dispatcher.mjs --agent opencode",
+    "e2e:claude": "node ./scripts/e2e-dispatcher.mjs --agent claude",
+    "e2e:cursor": "node ./scripts/e2e-dispatcher.mjs --agent cursor-agent",
+    "e2e:codex": "node ./scripts/e2e-dispatcher.mjs --agent codex"
   },
   "engines": {
     "node": ">=18"

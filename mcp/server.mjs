@@ -8,8 +8,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "acp-coding-agent-dispatcher";
-const SERVER_VERSION = "0.3.1";
-const DATA_DIR = path.join(os.homedir(), ".codex", "agent-dispatcher");
+const SERVER_VERSION = "0.4.0";
+const DATA_DIR = process.env.AGENT_DISPATCHER_DATA_DIR
+  ? path.resolve(process.env.AGENT_DISPATCHER_DATA_DIR)
+  : path.join(os.homedir(), ".codex", "agent-dispatcher");
 const REGISTRY_PATH = path.join(DATA_DIR, "registry.json");
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const LOG_DIR = path.join(DATA_DIR, "logs");

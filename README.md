@@ -36,6 +36,19 @@ To verify that the real OpenCode ACP server can initialize and create a session 
 npm run smoke:opencode
 ```
 
+## Real E2E
+
+Real E2E scripts call external agents and may incur model cost. They create a temporary git worktree, isolate dispatcher registry/config/logs with `AGENT_DISPATCHER_DATA_DIR`, and ask the selected agent to append one line to `note.txt`.
+
+```bash
+npm run e2e:opencode -- --opencode-model opencode-go/glm-5.2 --keep
+npm run e2e:claude -- --timeout-sec 600 --keep
+npm run e2e:cursor -- --timeout-sec 600 --keep
+npm run e2e:codex -- --timeout-sec 600 --keep
+```
+
+Omit `--keep` to clean successful runs automatically. Failed runs are always kept for inspection.
+
 The plugin manifest can be validated with the Codex plugin creator helper:
 
 ```bash
