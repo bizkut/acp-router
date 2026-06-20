@@ -533,6 +533,45 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
       }
     }
 
+    if (args.model) {
+      const modelOption = agentConfigOptions.find((o) => o.category === "model" || /model/i.test(o.id ?? ""));
+      if (modelOption) {
+        const modelValueExists = modelOption.options.some((o) => o.value === args.model);
+        if (modelValueExists) {
+          const setModelResult = await client.request("session/set_config_option", {
+            sessionId: providerSessionId,
+            configId: modelOption.id ?? "model",
+            value: args.model
+          });
+          if (Array.isArray(setModelResult?.configOptions)) {
+            agentConfigOptions = summarizeAcpConfigOptions(setModelResult.configOptions);
+            availableModels = extractModelOptions(agentConfigOptions);
+          }
+          streamEvent({
+            type: "acp_model_set",
+            timestamp: new Date().toISOString(),
+            message: `Set ${selectedAgent.id} model to ${args.model}.`,
+            model: args.model
+          });
+        } else {
+          streamEvent({
+            type: "acp_model_set_skipped",
+            timestamp: new Date().toISOString(),
+            message: `${adapterLabel} model option does not include value "${args.model}"; skipping model setting.`,
+            attemptedModel: args.model,
+            availableModelValues: modelOption.options.map((o) => o.value)
+          });
+        }
+      } else {
+        streamEvent({
+          type: "acp_model_set_skipped",
+          timestamp: new Date().toISOString(),
+          message: `${adapterLabel} does not expose a model config option; skipping model setting.`,
+          attemptedModel: args.model
+        });
+      }
+    }
+
     const promptResult = await client.request("session/prompt", {
       sessionId: providerSessionId,
       prompt: [

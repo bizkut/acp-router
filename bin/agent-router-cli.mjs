@@ -58,6 +58,7 @@ Options:
   --mode <mode>         Execution mode (default: implementation)
   --timeout-sec <n>     Timeout in seconds (default: 3600)
   --permission-profile <p>  plan | acceptEdits | bypassPermissions (default: bypassPermissions)
+  --model <id>             Model id to use (agent-specific)
   --collect-diff <bool>     Collect git diff (default: true)
   --session-id <id>     Continue an existing session
   --stream              Stream events to stderr while running
@@ -76,6 +77,7 @@ Options:
     mode: args.mode,
     timeoutSec: args["timeout-sec"] ? Number(args["timeout-sec"]) : undefined,
     permissionProfile: args["permission-profile"],
+    model: args.model,
     collectDiff: args["collect-diff"] === "false" ? false : undefined,
     sessionId: args["session-id"],
     async: wantStream

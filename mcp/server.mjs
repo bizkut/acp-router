@@ -72,6 +72,7 @@ async function startMcpServer() {
       sessionId: z.string().nullable().optional().describe("Existing session id to continue"),
       timeoutSec: z.number().optional().describe("Job timeout in seconds"),
       permissionProfile: z.enum(["plan", "acceptEdits", "bypassPermissions"]).optional().describe("Permission profile for the agent"),
+      model: z.string().optional().describe("Model id to use (agent-specific, e.g. opencode model id). Use discover_agents or get_job to see availableModels."),
       collectDiff: z.boolean().optional().describe("Collect git diff before and after the run"),
       launchExternalAgents: z.boolean().optional().describe("Override config for launching external agents"),
       inheritEnvironment: z.boolean().optional().describe("Override config for inheriting parent environment"),
