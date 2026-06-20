@@ -4,6 +4,8 @@ import { createJob, getJob, tailJobEvents, listJobs, cancelJob, listSessions } f
 import { discoverAgents } from "../mcp/agents.mjs";
 import { configureDispatcher } from "../mcp/agents.mjs";
 import { readConfig } from "../mcp/storage.mjs";
+import { probeAgentModels } from "../mcp/acp-client.mjs";
+import { safeEnv } from "../mcp/utils.mjs";
 
 const HELP = `agent-router-mcp CLI
 
@@ -12,6 +14,7 @@ Usage: agent-router <command> [options]
 Commands:
   run       Run a coding agent in a worktree (sync, blocks until done)
   agents    List discovered agents
+  models    Probe an agent for available models
   jobs      List jobs
   job       Get job details
   tail      Tail job events
@@ -152,6 +155,36 @@ async function cmdCancel(args) {
   printJson(result);
 }
 
+async function cmdModels(args) {
+  if (!args._ || !args._[0]) {
+    process.stderr.write("Error: agent id required (e.g. opencode, claude, codex)\n");
+    process.exit(1);
+  }
+  const agentId = args._[0];
+  const config = await readConfig();
+  const { agents } = await discoverAgents({ includeNotInstalled: false });
+  const selectedAgent = agents.find((a) => a.id === agentId);
+  if (!selectedAgent) {
+    process.stderr.write(`Error: agent "${agentId}" not found. Available: ${agents.map((a) => a.id).join(", ")}\n`);
+    process.exit(1);
+  }
+  if (!selectedAgent.acp?.available) {
+    process.stderr.write(`Error: agent "${agentId}" does not have ACP available\n`);
+    process.exit(1);
+  }
+  try {
+    const result = await probeAgentModels({
+      selectedAgent,
+      worktree: args.worktree,
+      env: safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true })
+    });
+    printJson(result);
+  } catch (error) {
+    process.stderr.write(`Error: ${error.message}\n`);
+    process.exit(1);
+  }
+}
+
 async function cmdSessions(args) {
   const result = await listSessions({
     includeArchived: args["include-archived"] === true,
@@ -191,6 +224,7 @@ async function main() {
   switch (command) {
     case "run": await cmdRun(args); break;
     case "agents": await cmdAgents(args); break;
+    case "models": await cmdModels(args); break;
     case "jobs": await cmdJobs(args); break;
     case "job": await cmdJob(args); break;
     case "tail": await cmdTail(args); break;

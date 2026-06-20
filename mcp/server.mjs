@@ -5,9 +5,10 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { SERVER_NAME, SERVER_VERSION } from "./constants.mjs";
-import { toToolResult } from "./utils.mjs";
+import { toToolResult, safeEnv } from "./utils.mjs";
 import { readConfig } from "./storage.mjs";
 import { discoverAgents, configureDispatcher } from "./agents.mjs";
+import { probeAgentModels } from "./acp-client.mjs";
 import {
   createJob,
   listJobs,
@@ -33,6 +34,36 @@ async function startMcpServer() {
       refresh: args.refresh === true,
       includeNotInstalled: args.includeNotInstalled !== false
     }))
+  );
+
+  server.tool(
+    "get_agent_models",
+    "Probe an ACP agent for its available model list. Starts a temporary ACP session, reads config options, and returns model choices. Use this before run_agent to discover valid model ids.",
+    {
+      agent: z.string().describe("Agent id to probe (e.g. opencode, claude, codex)"),
+      worktree: z.string().optional().describe("Worktree path for the ACP session (defaults to cwd)")
+    },
+    async (args) => {
+      const config = await readConfig();
+      const { agents } = await discoverAgents({ includeNotInstalled: false });
+      const selectedAgent = agents.find((a) => a.id === args.agent);
+      if (!selectedAgent) {
+        return toToolResult({ error: "agent_not_found", agentId: args.agent, availableAgents: agents.map((a) => a.id) });
+      }
+      if (!selectedAgent.acp?.available) {
+        return toToolResult({ error: "acp_not_available", agentId: args.agent });
+      }
+      try {
+        const result = await probeAgentModels({
+          selectedAgent,
+          worktree: args.worktree,
+          env: safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true })
+        });
+        return toToolResult(result);
+      } catch (error) {
+        return toToolResult({ error: "probe_failed", agentId: args.agent, message: error.message });
+      }
+    }
   );
 
   server.tool(

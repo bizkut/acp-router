@@ -691,6 +691,41 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
   }
 }
 
+async function probeAgentModels({ selectedAgent, worktree, env, timeoutMs }) {
+  const cwd = worktree ?? process.cwd();
+  const launchTarget = resolveAcpLaunchTarget(selectedAgent.acp, selectedAgent, cwd);
+  if (!launchTarget) throw new Error(`No ACP adapter is available for ${selectedAgent.id}.`);
+  const client = new AcpStdioClient({
+    command: launchTarget.command,
+    args: launchTarget.args,
+    cwd,
+    timeoutMs: timeoutMs ?? 10000,
+    env,
+    onEvent: () => {}
+  });
+  try {
+    await client.start();
+    await client.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: {},
+      clientInfo: { name: SERVER_NAME, title: "Agent Router", version: SERVER_VERSION }
+    });
+    const sessionResult = await client.request("session/new", {
+      cwd,
+      mcpServers: []
+    });
+    const configOptions = summarizeAcpConfigOptions(sessionResult.configOptions);
+    const models = extractModelOptions(configOptions);
+    return {
+      agentId: selectedAgent.id,
+      models,
+      configOptions
+    };
+  } finally {
+    client.dispose();
+  }
+}
+
 export {
   AcpStdioClient,
   normalizeAcpNotification,
@@ -706,5 +741,6 @@ export {
   collectDiagnosticStrings,
   buildFailureReason,
   diffChangedFiles,
-  runAcpStdioJob
+  runAcpStdioJob,
+  probeAgentModels
 };
