@@ -23,6 +23,12 @@
     "agent-router-mcp": "./bin/agent-router.mjs"
   },
   "main": "./mcp/server.mjs",
+  "files": [
+    "bin/",
+    "mcp/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node ./bin/agent-router.mjs",
     "start:mcp": "node ./mcp/server.mjs",
