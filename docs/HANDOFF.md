@@ -161,7 +161,7 @@ Note: smoke and e2e scripts were removed in v0.7.2 in favor of `npm run check` p
 
 ## Known Gaps
 
-1. npm package `acp-router` is not yet published to npm. The `npx acp-router` command will not work until the package is published. Use a local clone or `npm link` in the meantime.
+1. npm package `@peanut996/acp-router` is not yet published to npm. The `npx @peanut996/acp-router` command will not work until the package is published. Use a local clone or `npm link` in the meantime.
 2. GitHub repo has not been renamed yet. The repo is still `peanut996/codex-agent-router` on GitHub; `package.json` already references `peanut996/acp-router`. The rename needs to happen on GitHub.
 3. Dead CLI fallback code still exists in `mcp/server.mjs` (`runCliFallbackJob`, `getCliAdapterSpec`, CLI adapter specs in `BUILT_IN_AGENTS`). The CLI fallback is never called at runtime (ACP-only enforcement blocks it), but the code has not been cleaned up.
 4. Real ACP prompt/file-edit E2E for `claude-agent-acp` and `codex-acp` via the npx fallback path has not yet been documented as passed. Smoke tests use fake commands.
@@ -171,7 +171,7 @@ Note: smoke and e2e scripts were removed in v0.7.2 in favor of `npm run check` p
 
 ## Recommended Next Work
 
-1. Publish `acp-router` to npm so `npx acp-router` works out of the box.
+1. Publish `@peanut996/acp-router` to npm so `npx @peanut996/acp-router` works out of the box.
 
 2. Rename the GitHub repo from `peanut996/codex-agent-router` to `peanut996/acp-router` and update any remaining references.
 

@@ -2,7 +2,7 @@
 
 Generic MCP server for routing coding tasks to local ACP agents.
 
-[![npm version](https://img.shields.io/npm/v/acp-router.svg)](https://www.npmjs.com/package/acp-router)
+[![npm version](https://img.shields.io/npm/v/@peanut996/acp-router.svg)](https://www.npmjs.com/package/@peanut996/acp-router)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node >=18](https://img.shields.io/badge/node-%3E%3D18-green.svg)](https://nodejs.org/)
 
@@ -13,13 +13,13 @@ ACP Router discovers locally installed coding agents that speak the [Agent Clien
 Run ACP Router directly without installing:
 
 ```bash
-npx acp-router
+npx @peanut996/acp-router
 ```
 
 Or install globally and run:
 
 ```bash
-npm install -g acp-router
+npm install -g @peanut996/acp-router
 acp-router
 ```
 
@@ -30,7 +30,7 @@ Add ACP Router to any MCP client by pointing it at the `acp-router` command:
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -51,7 +51,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -68,7 +68,7 @@ Add to `.cursor/mcp.json` in your project root (or user-level config):
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -83,7 +83,7 @@ Add to your Windsurf MCP server configuration:
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -98,7 +98,7 @@ Add to `.mcp.json` in your project root:
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -121,7 +121,7 @@ If you installed globally, use `"command": "acp-router"` with an empty args arra
 ACP Router ships with a command-line interface (`acp-router-cli`) for use outside of an MCP client. Install globally to get the command on your PATH:
 
 ```bash
-npm install -g acp-router
+npm install -g @peanut996/acp-router
 ```
 
 ### Commands
@@ -300,7 +300,7 @@ Override the data directory by setting the `ACP_ROUTER_DATA_DIR` environment var
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"],
+      "args": ["@peanut996/acp-router"],
       "env": {
         "ACP_ROUTER_DATA_DIR": "/custom/path/to/data"
       }

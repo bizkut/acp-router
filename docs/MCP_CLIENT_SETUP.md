@@ -15,7 +15,7 @@ This guide covers how to configure ACP Router with various MCP clients, troubles
 No installation required. `npx` downloads and runs ACP Router on demand:
 
 ```bash
-npx acp-router
+npx @peanut996/acp-router
 ```
 
 This is the simplest option and ensures you always run the latest published version. All client config examples below use `npx`.
@@ -25,7 +25,7 @@ This is the simplest option and ensures you always run the latest published vers
 Install once, then run the `acp-router` command directly:
 
 ```bash
-npm install -g acp-router
+npm install -g @peanut996/acp-router
 acp-router
 ```
 
@@ -72,7 +72,7 @@ For client configs pointing at a local clone, use the full path to the bin entry
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -103,7 +103,7 @@ If you installed ACP Router globally, use this instead:
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -122,7 +122,7 @@ Reload the Cursor window after saving (Command+Shift+P > "Reload Window" on macO
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -141,7 +141,7 @@ Restart Windsurf after saving the config.
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"]
+      "args": ["@peanut996/acp-router"]
     }
   }
 }
@@ -164,7 +164,7 @@ Any client that supports stdio MCP servers can launch ACP Router. The server com
 If your client requires a full command string instead of a JSON config:
 
 ```bash
-npx acp-router
+npx @peanut996/acp-router
 ```
 
 ## Environment Variables
@@ -180,7 +180,7 @@ Overrides the data directory location. Defaults to `~/.acp-router/`.
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"],
+      "args": ["@peanut996/acp-router"],
       "env": {
         "ACP_ROUTER_DATA_DIR": "/path/to/custom/data/dir"
       }
@@ -202,7 +202,7 @@ The maximum allowed depth is **3**. If you need to change the starting depth for
   "mcpServers": {
     "acp-router": {
       "command": "npx",
-      "args": ["acp-router"],
+      "args": ["@peanut996/acp-router"],
       "env": {
         "ACP_ROUTER_DEPTH": "0"
       }
@@ -240,7 +240,7 @@ After configuring your MCP client, verify that ACP Router is working:
 | --- | --- | --- |
 | Client reports "server failed to start" | Node.js not found or version < 18 | Install Node.js >= 18 and ensure it is on PATH |
 | Client reports "command not found: npx" | npm not installed or not on PATH | Install Node.js which includes npm |
-| Server starts but immediately exits | `acp-router` package not found | Run `npx acp-router` manually in a terminal to trigger the initial download |
+| Server starts but immediately exits | `acp-router` package not found | Run `npx @peanut996/acp-router` manually in a terminal to trigger the initial download |
 | Permission denied on data directory | `~/.acp-router/` not writable | Check directory permissions or set `ACP_ROUTER_DATA_DIR` to a writable path |
 
 ### Tools not appearing
@@ -266,7 +266,7 @@ After configuring your MCP client, verify that ACP Router is working:
 - Run ACP Router standalone to see stderr output:
 
   ```bash
-  npx acp-router
+  npx @peanut996/acp-router
   ```
 
   The server reads JSON-RPC messages from stdin and writes responses to stdout. Any errors or diagnostics go to stderr.
@@ -288,5 +288,5 @@ After configuring your MCP client, verify that ACP Router is working:
 - Use `ACP_ROUTER_DATA_DIR` to isolate a test run from your real data:
 
   ```bash
-  ACP_ROUTER_DATA_DIR=/tmp/acp-router-test npx acp-router
+  ACP_ROUTER_DATA_DIR=/tmp/acp-router-test npx @peanut996/acp-router
   ```

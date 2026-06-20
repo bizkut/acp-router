@@ -12,7 +12,7 @@ command so you don't need multiple MCP tool round-trips.
 
 ## Prerequisites
 
-- `acp-router-cli` CLI installed (`npm install -g acp-router` or `npm link` from repo).
+- `acp-router-cli` CLI installed (`npm install -g @peanut996/acp-router` or `npm link` from repo).
 - At least one ACP agent installed: `opencode`, `claude-agent-acp`, or `codex-acp`.
 
 ## Quick start
