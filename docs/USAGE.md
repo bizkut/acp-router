@@ -43,7 +43,7 @@ codex plugin add agent-router@codex-agent-router
 Pinned release install:
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.3
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.4
 codex plugin add agent-router@codex-agent-router
 ```
 
