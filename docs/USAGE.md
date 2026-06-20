@@ -29,7 +29,7 @@ Agent Router keeps Codex as the controller. External agents run in a specified w
   - Cursor Agent `agent`
   - `codex`
 
-External launches are disabled by default. This is intentional.
+External launches are enabled by default for runnable `run_coding_agent` and `continue_coding_agent_session` calls, but still require an existing absolute worktree.
 
 ## Local Install And Refresh
 
@@ -43,7 +43,7 @@ codex plugin add agent-router@codex-agent-router
 Pinned release install:
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.4
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
 codex plugin add agent-router@codex-agent-router
 ```
 
@@ -85,12 +85,6 @@ In a Codex thread, ask:
 Discover local coding agents with Agent Router.
 ```
 
-Then enable external launches:
-
-```text
-Configure Agent Router with launchExternalAgents=true.
-```
-
 Run a task only against an absolute worktree path:
 
 ```text
@@ -98,18 +92,18 @@ Use Cursor Agent through Agent Router to edit /absolute/path/to/worktree.
 Append one line to note.txt, then report changed files, validation, risks, job id, session id, and log path.
 ```
 
-When you are done testing, disable launches again:
+To record without launching an external agent, pass `launchExternalAgents=false` on that one request:
 
 ```text
-Configure Agent Router with launchExternalAgents=false.
+Use Cursor Agent through Agent Router in /absolute/path/to/worktree, but set launchExternalAgents=false for this run.
 ```
 
 ## Safety Defaults
 
-- `launchExternalAgents=false` by default.
+- `launchExternalAgents=true` by default for runnable dispatch tools.
 - `worktree` must be an existing absolute path.
 - Writable jobs lock a worktree so two agents do not edit it at the same time.
-- Child processes inherit the Agent Router environment by default. Set `inheritEnvironment=false` if you want a restricted environment.
+- Child processes inherit the Agent Router environment by default. Pass `inheritEnvironment=false` on a single run or set it in config if you want a restricted environment.
 - `bypass_permissions` is disabled unless explicitly allowed in config.
 - Agent Router does not commit, push, or open pull requests automatically.
 
@@ -174,7 +168,7 @@ A passing real E2E should include:
 | Symptom | What To Check |
 | --- | --- |
 | Agent is not discovered | Run the agent's `--version` command and confirm it is on `PATH`. |
-| `run_coding_agent` records only | Confirm `launchExternalAgents=true`. |
+| `run_coding_agent` records only | Confirm the tool call or config did not set `launchExternalAgents=false`. |
 | Worktree is rejected | Use an existing absolute path. |
 | Worktree is locked | Check active jobs and cancel or wait for the running writable job. |
 | Claude appears stuck | Inspect `job.agentErrors` and `job.logPath`; rate-limit retries can look like a hang. |

@@ -33,10 +33,14 @@ try {
 
   if (
     result.stderr
-    || result.serverVersion !== "0.6.4"
+    || result.serverVersion !== "0.6.5"
     || result.discoveryCount < 1
+    || result.defaultLaunchExternalAgents !== true
+    || result.configuredLaunchExternalAgents !== false
     || result.runStatus !== "completed"
     || result.adapterStatus !== "opencode_acp"
+    || result.runLaunchExternalAgents !== true
+    || result.runInheritEnvironment !== true
     || result.providerSessionId !== "fake-opencode-session"
     || !result.availableModels?.some((model) => model.value === "opencode-go/glm-5.2")
     || result.failureStatus !== "timed_out"
@@ -58,6 +62,9 @@ try {
     || result.codexStatus !== "completed"
     || result.codexAdapterStatus !== "codex_cli"
     || result.codexProviderSessionId !== "fake-codex-session"
+    || result.recordOnlyStatus !== "completed"
+    || result.recordOnlyAdapterStatus !== "record_only"
+    || result.recordOnlyLaunchExternalAgents !== false
     || result.asyncStartStatus !== "running"
     || result.cancelStatus !== "cancelled"
     || result.cancelActiveProcessCancelled !== true
@@ -206,12 +213,22 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
   });
   send(child, {
     jsonrpc: "2.0",
+    id: 20,
+    method: "tools/call",
+    params: {
+      name: "get_coding_agent_dispatcher_config",
+      arguments: {}
+    }
+  });
+  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 20), 3000);
+  send(child, {
+    jsonrpc: "2.0",
     id: 2,
     method: "tools/call",
     params: {
       name: "configure_coding_agent_dispatcher",
       arguments: {
-        launchExternalAgents: true
+        launchExternalAgents: false
       }
     }
   });
@@ -235,6 +252,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke test only",
         async: false,
+        launchExternalAgents: true,
         permissionProfile: "workspace_write"
       }
     }
@@ -252,6 +270,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Trigger failure: insufficient balance",
         async: false,
+        launchExternalAgents: true,
         timeoutSec: 1,
         permissionProfile: "workspace_write"
       }
@@ -269,6 +288,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke test Claude CLI",
         async: false,
+        launchExternalAgents: true,
         permissionProfile: "workspace_write"
       }
     }
@@ -285,6 +305,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke test Cursor Agent CLI",
         async: false,
+        launchExternalAgents: true,
         permissionProfile: "workspace_write"
       }
     }
@@ -301,11 +322,29 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke test Codex CLI",
         async: false,
+        launchExternalAgents: true,
         permissionProfile: "workspace_write"
       }
     }
   });
   await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 8), 10_000);
+  send(child, {
+    jsonrpc: "2.0",
+    id: 90,
+    method: "tools/call",
+    params: {
+      name: "run_coding_agent",
+      arguments: {
+        agent: "cursor-agent",
+        worktree,
+        prompt: "Smoke record-only override",
+        async: false,
+        launchExternalAgents: false,
+        permissionProfile: "workspace_write"
+      }
+    }
+  });
+  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 90), 3000);
   send(child, {
     jsonrpc: "2.0",
     id: 9,
@@ -317,6 +356,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke async cancel",
         async: true,
+        launchExternalAgents: true,
         timeoutSec: 30,
         permissionProfile: "workspace_write"
       }
@@ -361,6 +401,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke orphan recovery",
         async: true,
+        launchExternalAgents: true,
         timeoutSec: 30,
         permissionProfile: "workspace_write"
       }
@@ -434,6 +475,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
         worktree,
         prompt: "Smoke restart recovery followup",
         async: false,
+        launchExternalAgents: true,
         permissionProfile: "workspace_write"
       }
     }
@@ -460,9 +502,13 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
     stderr: `${first.stderr}${second.stderr}`.trim(),
     serverVersion: init?.result?.serverInfo?.version,
     discoveryCount: parsedToolResults[3]?.agents?.length ?? 0,
+    defaultLaunchExternalAgents: parsedToolResults[20]?.config?.safety?.launchExternalAgents,
+    configuredLaunchExternalAgents: parsedToolResults[2]?.config?.safety?.launchExternalAgents,
     claudeDiscoveredVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "claude")?.version,
     runStatus: parsedToolResults[4]?.status,
     adapterStatus: parsedToolResults[4]?.adapterStatus,
+    runLaunchExternalAgents: parsedToolResults[4]?.launchExternalAgents,
+    runInheritEnvironment: parsedToolResults[4]?.inheritEnvironment,
     providerSessionId: parsedToolResults[4]?.providerSessionId,
     availableModels: parsedToolResults[4]?.availableModels,
     failureStatus: parsedToolResults[5]?.status,
@@ -483,6 +529,9 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
     codexStatus: parsedToolResults[8]?.status,
     codexAdapterStatus: parsedToolResults[8]?.adapterStatus,
     codexProviderSessionId: parsedToolResults[8]?.providerSessionId,
+    recordOnlyStatus: parsedToolResults[90]?.status,
+    recordOnlyAdapterStatus: parsedToolResults[90]?.adapterStatus,
+    recordOnlyLaunchExternalAgents: parsedToolResults[90]?.launchExternalAgents,
     asyncStartStatus: parsedToolResults[9]?.status,
     asyncStartJobId: parsedToolResults[9]?.jobId,
     cancelStatus: parsedToolResults[10]?.status,

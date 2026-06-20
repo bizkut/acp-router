@@ -29,7 +29,7 @@ Codex 仍然是主控。外部 agent 在指定 worktree 中执行任务，Agent 
   - Cursor Agent `agent`
   - `codex`
 
-外部 agent 启动默认是关闭的，这是安全设计。
+可运行的 `run_coding_agent` 和 `continue_coding_agent_session` 默认会真实启动外部 agent，但仍然必须提供已存在的绝对 worktree 路径。
 
 ## 本地安装和刷新
 
@@ -43,7 +43,7 @@ codex plugin add agent-router@codex-agent-router
 固定当前 release 安装：
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.4
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
 codex plugin add agent-router@codex-agent-router
 ```
 
@@ -85,12 +85,6 @@ codex plugin add agent-router@personal
 使用 Agent Router 发现本机可用的 coding agent。
 ```
 
-然后打开外部 agent 启动开关：
-
-```text
-把 Agent Router 配置为 launchExternalAgents=true。
-```
-
 运行任务时必须给绝对 worktree 路径：
 
 ```text
@@ -98,18 +92,18 @@ codex plugin add agent-router@personal
 请给 note.txt 追加一行，完成后报告 changed files、validation、risks、job id、session id 和 log path。
 ```
 
-测试结束后建议关闭外部启动：
+如果某一次只想记录、不想真实启动外部 agent，可以在那次请求里传 `launchExternalAgents=false`：
 
 ```text
-把 Agent Router 配置为 launchExternalAgents=false。
+使用 Cursor Agent 通过 Agent Router 在 /absolute/path/to/worktree 中执行任务，但这次设置 launchExternalAgents=false。
 ```
 
 ## 安全默认值
 
-- 默认 `launchExternalAgents=false`。
+- 可运行派发工具默认 `launchExternalAgents=true`。
 - `worktree` 必须是已存在的绝对路径。
 - 写入型 job 会锁定 worktree，避免多个 agent 同时修改同一目录。
-- 子进程默认继承 Agent Router 环境变量；如果要限制环境，设置 `inheritEnvironment=false`。
+- 子进程默认继承 Agent Router 环境变量；如果要限制环境，可以在单次运行中传 `inheritEnvironment=false`，或写入全局配置。
 - 默认不允许 `bypass_permissions`，除非显式配置开启。
 - Agent Router 不会自动 commit、push 或创建 PR。
 
@@ -174,7 +168,7 @@ npm run e2e:codex -- --timeout-sec 600 --keep
 | 现象 | 优先检查 |
 | --- | --- |
 | agent 没被发现 | 先运行该 agent 的 `--version`，确认它在 `PATH` 上。 |
-| `run_coding_agent` 只是记录 job，没有真实启动 | 确认 `launchExternalAgents=true`。 |
+| `run_coding_agent` 只是记录 job，没有真实启动 | 确认本次 tool call 或全局配置没有设置 `launchExternalAgents=false`。 |
 | worktree 被拒绝 | 使用已存在的绝对路径。 |
 | worktree 被锁 | 查看 active jobs，等待当前写入 job 结束或取消它。 |
 | Claude 看起来卡住 | 查看 `job.agentErrors` 和 `job.logPath`；rate-limit 重试可能看起来像卡住。 |

@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "agent-router";
-const SERVER_VERSION = "0.6.4";
+const SERVER_VERSION = "0.6.5";
 const DATA_DIR = process.env.AGENT_ROUTER_DATA_DIR
   ? path.resolve(process.env.AGENT_ROUTER_DATA_DIR)
   : process.env.AGENT_DISPATCHER_DATA_DIR
@@ -84,6 +84,8 @@ const TOOL_DEFINITIONS = [
           default: "workspace_write"
         },
         collectDiff: { type: "boolean", default: true },
+        launchExternalAgents: { type: "boolean", default: true },
+        inheritEnvironment: { type: "boolean", default: true },
         metadata: { type: "object", additionalProperties: true }
       },
       additionalProperties: false
@@ -154,6 +156,8 @@ const TOOL_DEFINITIONS = [
         prompt: { type: "string" },
         worktree: { type: "string" },
         async: { type: "boolean", default: true },
+        launchExternalAgents: { type: "boolean", default: true },
+        inheritEnvironment: { type: "boolean", default: true },
         timeoutSec: { type: "integer", minimum: 1, default: 3600 }
       },
       additionalProperties: false
@@ -446,8 +450,9 @@ async function createJob(args) {
   const worktreeState = args.collectDiff === false
     ? { skipped: true, reason: "collectDiff disabled" }
     : await collectWorktreeState(args.worktree);
-  const launchingEnabled = config.safety.launchExternalAgents === true;
-  const agentEnv = safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true });
+  const launchingEnabled = resolveBooleanOverride(args.launchExternalAgents, config.safety.launchExternalAgents);
+  const inheritEnvironment = resolveBooleanOverride(args.inheritEnvironment, config.safety.inheritEnvironment);
+  const agentEnv = safeEnv({ inheritEnvironment });
   const asyncRequested = args.async !== false;
   const launchPlan = planLaunch({ launchingEnabled, selectedAgent });
   const adapterStatus = launchPlan.adapterStatus;
@@ -501,6 +506,8 @@ async function createJob(args) {
     risks: initialRisks,
     logPath,
     adapterStatus,
+    launchExternalAgents: launchingEnabled,
+    inheritEnvironment,
     selectionReason: selected.reason,
     worktreeState,
     recentEvents
@@ -554,6 +561,8 @@ async function createJob(args) {
     agentErrors: job.agentErrors ?? [],
     availableModels: job.availableModels ?? session.availableModels ?? [],
     agentConfigOptions: job.agentConfigOptions ?? session.agentConfigOptions ?? [],
+    launchExternalAgents: job.launchExternalAgents,
+    inheritEnvironment: job.inheritEnvironment,
     selectionReason: selected.reason,
     message: `${selected.agentId} job recorded by Agent Router alpha. Use get_coding_agent_job to inspect it.`
   };
@@ -1060,6 +1069,8 @@ async function continueSession(args) {
     prompt: args.prompt,
     worktree: args.worktree,
     async: args.async,
+    launchExternalAgents: args.launchExternalAgents,
+    inheritEnvironment: args.inheritEnvironment,
     timeoutSec: args.timeoutSec,
     mode: "implementation",
     permissionProfile: "workspace_write",
@@ -1086,7 +1097,7 @@ async function readConfig() {
     allowCurrentDirectory: false,
     safety: {
       requireAbsoluteWorktree: true,
-      launchExternalAgents: false,
+      launchExternalAgents: true,
       defaultPermissionProfile: "workspace_write",
       allowBypassPermissions: false,
       inheritEnvironment: true
@@ -1104,6 +1115,10 @@ async function readConfig() {
       ...(isPlainObject(stored.safety) ? stored.safety : {})
     }
   };
+}
+
+function resolveBooleanOverride(value, fallback) {
+  return typeof value === "boolean" ? value : fallback === true;
 }
 
 async function readRegistry() {

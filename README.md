@@ -14,7 +14,7 @@ This repository is an alpha implementation. It can:
 - persist Agent Router config, sessions, and jobs under `~/.codex/agent-router`;
 - write per-job JSONL logs;
 - capture current git worktree state for recorded jobs.
-- run OpenCode through ACP stdio when external launch is explicitly enabled.
+- run OpenCode through ACP stdio by default for runnable jobs, with per-call and config overrides to disable external launch.
 - run Claude Code, Cursor Agent, and Codex CLI through CLI fallback adapters.
 - launch supported adapters synchronously or as background jobs with persisted child process metadata and cancellable in-memory process tracking.
 - recover jobs orphaned by an MCP server restart, best-effort terminate the recorded child PID, and release stale worktree locks.
@@ -24,11 +24,11 @@ This repository is an alpha implementation. It can:
 
 Agent Router does not set an ACP model by default. When an ACP agent exposes session `configOptions`, the OpenCode adapter records summarized options and returns model choices in `availableModels`; failures include the same data so Codex can ask the user which model to retry with.
 
-External launch is disabled by default. `run_coding_agent` records a completed `record_only` job unless `launchExternalAgents` is enabled. Runnable adapters support both `async=false` synchronous execution and `async=true` background execution. `cancel_coding_agent_job` terminates active in-memory child processes for jobs started by the current MCP server process and records kill metadata on the job.
+External launch is enabled by default for `run_coding_agent` and `continue_coding_agent_session` when the request uses an existing absolute worktree. Pass `launchExternalAgents=false` on a single tool call, or set it through `configure_coding_agent_dispatcher`, to record a completed `record_only` job instead. Runnable adapters support both `async=false` synchronous execution and `async=true` background execution. `cancel_coding_agent_job` terminates active in-memory child processes for jobs started by the current MCP server process and records kill metadata on the job.
 
 On MCP server restart, Agent Router checks the JSON registry before first config or registry use. Jobs left in `queued`, `starting`, or `running` that are not owned by the current server process are marked `orphaned`; when a child PID was persisted, Agent Router sends `SIGTERM` best-effort before releasing the worktree lock. Sessions move back to `idle` when resumable or `orphaned` otherwise.
 
-External agent processes inherit the Agent Router process environment by default, matching direct terminal usage for tools such as Claude Code. Set `inheritEnvironment=false` through `configure_coding_agent_dispatcher` to restrict child process environment variables to the minimal Agent Router allowlist.
+External agent processes inherit the Agent Router process environment by default, matching direct terminal usage for tools such as Claude Code. Pass `inheritEnvironment=false` on a single tool call, or set it through `configure_coding_agent_dispatcher`, to restrict child process environment variables to the minimal Agent Router allowlist.
 
 ## User Guides
 
@@ -53,7 +53,7 @@ codex plugin add agent-router@codex-agent-router
 For a pinned install of the current release:
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.4
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
 codex plugin add agent-router@codex-agent-router
 ```
 
