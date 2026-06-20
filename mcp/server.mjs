@@ -515,6 +515,14 @@ async function createJob(args) {
   const inheritEnvironment = resolveBooleanOverride(args.inheritEnvironment, config.safety.inheritEnvironment);
   const agentEnv = safeEnv({ inheritEnvironment });
   const asyncRequested = args.async !== false;
+  if (launchingEnabled && !isAcpRunReady(selectedAgent)) {
+    return {
+      status: "failed",
+      error: "acp_required",
+      agentId: selected.agentId,
+      message: buildAcpUnavailableError(selectedAgent)
+    };
+  }
   const launchPlan = planLaunch({ launchingEnabled, selectedAgent });
   const adapterStatus = launchPlan.adapterStatus;
   const initialStatus = launchPlan.runnable ? "running" : launchPlan.status;
@@ -639,25 +647,18 @@ async function executeAndPersistJobRun({ args, job, session, selectedAgent, time
   const controller = createRunController(job.jobId);
   ACTIVE_RUNS.set(job.jobId, controller);
   try {
-    const runResult = launchKind === "acp_stdio"
-      ? await runAcpStdioJob({
-        args,
-        job,
-        session,
-        selectedAgent,
-        timeoutSec,
-        agentEnv,
-        controller
-      })
-      : await runCliFallbackJob({
-        args,
-        job,
-        session,
-        selectedAgent,
-        timeoutSec,
-        agentEnv,
-        controller
-      });
+    if (launchKind !== "acp_stdio") {
+      throw new Error(`Unsupported launch kind: ${launchKind}. ACP is required and CLI fallback has been removed.`);
+    }
+    const runResult = await runAcpStdioJob({
+      args,
+      job,
+      session,
+      selectedAgent,
+      timeoutSec,
+      agentEnv,
+      controller
+    });
     await persistJobRunResult({ job, session, selectedAgent, runResult });
   } finally {
     ACTIVE_RUNS.delete(job.jobId);
@@ -1017,9 +1018,11 @@ async function maybeListNativeSessions({ args, config, registry }) {
 
 async function listAcpNativeSessions({ selectedAgent, worktree, env }) {
   const cwd = worktree ?? process.cwd();
+  const launchTarget = resolveAcpLaunchTarget(selectedAgent.acp, selectedAgent, cwd);
+  if (!launchTarget) throw new Error(`No ACP adapter is available for ${selectedAgent.id}.`);
   const client = new AcpStdioClient({
-    command: selectedAgent.acp.installedPath,
-    args: getAcpAdapterArgs(selectedAgent, cwd),
+    command: launchTarget.command,
+    args: launchTarget.args,
     cwd,
     timeoutMs: COMMAND_TIMEOUT_MS,
     env,
@@ -1696,16 +1699,31 @@ function enrichAgentWithRegistry(agent, acpRegistry) {
   const registryVersion = typeof registryAgent.version === "string" && registryAgent.version.trim()
     ? registryAgent.version.trim()
     : null;
+  const npxPackage = extractRegistryNpxPackage(registryAgent);
+  const npxFallback = agent.acp && !agent.acp.available && npxPackage
+    ? buildNpxAcpFallback(npxPackage)
+    : null;
   const acpVersionFromRegistry = Boolean(agent.acp?.available && !agent.acp.version && registryVersion);
   const notes = acpVersionFromRegistry
     ? agent.notes.filter((note) => !note.startsWith("ACP version probe failed:"))
     : agent.notes;
+  const extraNotes = [];
+  if (npxFallback) {
+    extraNotes.push(`ACP adapter available via npx: ${npxFallback.launchCommand.join(" ")}`);
+  }
+  if (installHint) {
+    extraNotes.push(`Install hint: ${installHint}`);
+  }
+  const transport = npxFallback ? "acp_stdio" : agent.transport;
+  const status = npxFallback && agent.status === "not_installed" ? "available" : agent.status;
   return {
     ...agent,
-    version: agent.version ?? (acpVersionFromRegistry ? registryVersion : null),
+    version: agent.version ?? (acpVersionFromRegistry || npxFallback ? registryVersion : null),
     displayName: agent.displayName || registryAgent.name,
     description: registryAgent.description ?? null,
     icon: registryAgent.icon ? { kind: "registry_url", value: registryAgent.icon } : agent.icon,
+    transport,
+    status,
     registry: {
       id: registryAgent.id,
       name: registryAgent.name,
@@ -1717,13 +1735,28 @@ function enrichAgentWithRegistry(agent, acpRegistry) {
     },
     acp: agent.acp ? {
       ...agent.acp,
-      version: agent.acp.version ?? (agent.acp.available ? registryVersion : null)
+      available: npxFallback ? true : agent.acp.available,
+      installedPath: npxFallback ? null : agent.acp.installedPath,
+      launchMode: npxFallback ? "npx" : agent.acp.launchMode ?? null,
+      launchCommand: npxFallback ? npxFallback.launchCommand : agent.acp.launchCommand ?? null,
+      version: agent.acp.version ?? (agent.acp.available || npxFallback ? registryVersion : null)
     } : null,
     notes: [
       ...notes,
       `Registry: ${registryAgent.name}${registryVersion ? ` ${registryVersion}` : ""}.`,
-      ...(installHint ? [`Install hint: ${installHint}`] : [])
+      ...extraNotes
     ]
+  };
+}
+
+function extractRegistryNpxPackage(registryAgent) {
+  const npxPackage = registryAgent.distribution?.npx?.package;
+  return typeof npxPackage === "string" && npxPackage ? npxPackage : null;
+}
+
+function buildNpxAcpFallback(npxPackage) {
+  return {
+    launchCommand: ["npx", "--yes", npxPackage]
   };
 }
 
@@ -1914,22 +1947,12 @@ function planLaunch({ launchingEnabled, selectedAgent }) {
       risks: ["No external agent process was launched in this alpha build."]
     };
   }
-  if (selectedAgent.acp?.available && selectedAgent.acp.installedPath) {
+  if (selectedAgent.acp?.available && (selectedAgent.acp.installedPath || selectedAgent.acp.launchMode === "npx")) {
     return {
       kind: "acp_stdio",
       runnable: true,
       adapterStatus: "starting",
       summary: `Starting ${selectedAgent.displayName} ACP adapter.`,
-      risks: []
-    };
-  }
-  const cliSpec = getCliAdapterSpec(selectedAgent.id);
-  if (cliSpec) {
-    return {
-      kind: "cli_fallback",
-      runnable: true,
-      adapterStatus: "starting",
-      summary: `Starting ${selectedAgent.displayName} CLI fallback adapter.`,
       risks: []
     };
   }
@@ -1943,9 +1966,29 @@ function planLaunch({ launchingEnabled, selectedAgent }) {
   };
 }
 
+function isAcpRunReady(selectedAgent) {
+  const acp = selectedAgent?.acp;
+  if (!acp?.available) return false;
+  if (acp.installedPath) return true;
+  return acp.launchMode === "npx" && Array.isArray(acp.launchCommand) && acp.launchCommand.length > 0;
+}
+
+function buildAcpUnavailableError(selectedAgent) {
+  if (selectedAgent.id === "cursor-agent") {
+    return "Cursor Agent has no ACP adapter; CLI fallback removed. Install a Cursor ACP adapter or use a different agent.";
+  }
+  const installHint = selectedAgent.registry?.installHint ?? null;
+  const base = `ACP is required for ${selectedAgent.displayName} and CLI fallback has been removed.`;
+  if (installHint) {
+    return `${base} Install the ACP adapter: ${installHint}`;
+  }
+  return `${base} Install the ${selectedAgent.displayName} ACP adapter or use a different agent.`;
+}
+
 async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, agentEnv, controller }) {
   const acpSpec = selectedAgent.acp;
-  if (!acpSpec?.installedPath) throw new Error(`No ACP adapter is available for ${selectedAgent.id}.`);
+  const launchTarget = resolveAcpLaunchTarget(acpSpec, selectedAgent, args.worktree);
+  if (!launchTarget) throw new Error(`No ACP adapter is available for ${selectedAgent.id}.`);
   const adapterLabel = acpSpec.label ?? `${selectedAgent.displayName} ACP`;
   const adapterStatus = acpSpec.adapterStatus ?? `${selectedAgent.id}_acp`;
   const events = [];
@@ -1954,8 +1997,8 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
   let agentConfigOptions = [];
   let availableModels = [];
   const client = new AcpStdioClient({
-    command: acpSpec.installedPath,
-    args: getAcpAdapterArgs(selectedAgent, args.worktree),
+    command: launchTarget.command,
+    args: launchTarget.args,
     cwd: args.worktree,
     timeoutMs: timeoutSec * 1000,
     env: agentEnv,
@@ -1963,7 +2006,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
     onProcessStart: (child) => controller?.recordProcess({
       pid: child.pid,
       kind: "acp_stdio",
-      command: path.basename(acpSpec.installedPath),
+      command: launchTarget.processLabel,
       startedAt: new Date().toISOString()
     })
   });
@@ -2135,6 +2178,25 @@ function getAcpAdapterArgs(selectedAgent, worktree) {
     return ["acp", "--cwd", worktree, "--print-logs", "--log-level", "ERROR"];
   }
   return [];
+}
+
+function resolveAcpLaunchTarget(acpSpec, selectedAgent, worktree) {
+  if (!acpSpec?.available) return null;
+  if (acpSpec.launchMode === "npx" && Array.isArray(acpSpec.launchCommand) && acpSpec.launchCommand.length > 0) {
+    return {
+      command: acpSpec.launchCommand[0],
+      args: [...acpSpec.launchCommand.slice(1), ...getAcpAdapterArgs(selectedAgent, worktree)],
+      processLabel: acpSpec.launchCommand.join(" ")
+    };
+  }
+  if (acpSpec.installedPath) {
+    return {
+      command: acpSpec.installedPath,
+      args: getAcpAdapterArgs(selectedAgent, worktree),
+      processLabel: path.basename(acpSpec.installedPath)
+    };
+  }
+  return null;
 }
 
 async function runCliFallbackJob({ args, job, session, selectedAgent, timeoutSec, agentEnv, controller }) {
@@ -3000,9 +3062,7 @@ function chooseAgent(agents, config, mode) {
   if (modeAgent) return { agentId: modeAgent.id, reason: `configured default for ${mode}` };
   const acp = available.find((agent) => agent.transport === "acp_stdio");
   if (acp) return { agentId: acp.id, reason: "native ACP available" };
-  const cli = available.find((agent) => agent.transport === "cli");
-  if (cli) return { agentId: cli.id, reason: "CLI fallback available" };
-  return { agentId: null, reason: "no available agent found" };
+  return { agentId: null, reason: "no available ACP agent found; CLI fallback removed" };
 }
 
 function createId(prefix) {
