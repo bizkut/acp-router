@@ -35,11 +35,14 @@ npm run check
 npm run smoke
 npm run smoke:sessions
 npm run smoke:opencode:sessions
+npm run e2e:restart-recovery
 ```
 
 `npm run smoke` uses fake local `opencode`, `claude`, `agent`, and `codex` commands so it can validate the ACP and CLI fallback adapters without model calls.
 
 `npm run smoke:sessions` uses fake OpenCode ACP to validate session list, continue, provider session resume, and archive behavior without model calls.
+
+`npm run e2e:restart-recovery` uses a fake PATH-visible `claude` CLI to validate async PID persistence, MCP restart orphan recovery, best-effort child termination, and post-recovery worktree lock release without model calls.
 
 To verify that the real OpenCode ACP server can initialize and create a session without sending a model prompt:
 

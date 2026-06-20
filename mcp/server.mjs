@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "acp-coding-agent-dispatcher";
-const SERVER_VERSION = "0.5.4";
+const SERVER_VERSION = "0.5.5";
 const DATA_DIR = process.env.AGENT_DISPATCHER_DATA_DIR
   ? path.resolve(process.env.AGENT_DISPATCHER_DATA_DIR)
   : path.join(os.homedir(), ".codex", "agent-dispatcher");
