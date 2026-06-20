@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/peanut996/agent-router-mcp.git"
+    "url": "git+https://github.com/peanut996/agent-router-mcp.git"
   },
   "keywords": [
     "mcp",
@@ -20,7 +20,7 @@
   ],
   "type": "module",
   "bin": {
-    "agent-router-mcp": "./bin/agent-router.mjs"
+    "agent-router-mcp": "bin/agent-router.mjs"
   },
   "main": "./mcp/server.mjs",
   "files": [
