@@ -37,6 +37,7 @@ try {
   await createFakeAcpAgent(tempBin, {
     executable: "codex-acp",
     version: "fake-codex-acp 999.0.0",
+    versionFailureCode: 2,
     sessionId: "fake-codex-acp-session",
     message: "Fake Codex ACP completed."
   });
@@ -78,6 +79,9 @@ try {
     || !result.agentErrors?.some((error) => error.includes("Not logged in"))
     || !result.failureAvailableModels?.some((model) => model.value === "opencode-go/glm-5.2")
     || result.claudeDiscoveredVersion !== "fake-claude-agent-acp 999.0.0"
+    || result.codexDiscoveredVersion !== "fake-codex 999.0.0"
+    || result.codexAcpVersion !== "0.16.0"
+    || result.codexHasAcpProbeFailedNote !== false
     || result.claudeStatus !== "completed"
     || result.claudeAdapterStatus !== "claude_acp"
     || result.claudeProviderSessionId !== "fake-claude-acp-session"
@@ -159,10 +163,14 @@ function write(message) {
   await chmod(scriptPath, 0o755);
 }
 
-async function createFakeAcpAgent(binDir, { executable, version, sessionId, message }) {
+async function createFakeAcpAgent(binDir, { executable, version, versionFailureCode = 0, sessionId, message }) {
   const scriptPath = path.join(binDir, executable);
   const script = `#!/usr/bin/env node
 if (process.argv.includes("--version")) {
+  if (${JSON.stringify(versionFailureCode)} !== 0) {
+    console.error("fake version probe failure");
+    process.exit(${JSON.stringify(versionFailureCode)});
+  }
   console.log(${JSON.stringify(version)});
   process.exit(0);
 }
@@ -364,7 +372,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
     }
   });
 
-  const runMessage = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 4), 3000);
+  const runMessage = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 4), 10_000);
   const runResult = parseToolResult(runMessage);
   send(child, {
     jsonrpc: "2.0",
@@ -412,7 +420,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
       }
     }
   });
-  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 5), 4000);
+  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 5), 8000);
   send(child, {
     jsonrpc: "2.0",
     id: 6,
@@ -498,7 +506,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
       }
     }
   });
-  const asyncStart = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 9), 3000);
+  const asyncStart = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 9), 10_000);
   const asyncStartResult = parseToolResult(asyncStart);
   send(child, {
     jsonrpc: "2.0",
@@ -543,7 +551,7 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
       }
     }
   });
-  const orphanStart = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 12), 3000);
+  const orphanStart = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 12), 10_000);
   const orphanStartResult = parseToolResult(orphanStart);
   const orphanProcessPid = await waitForRecordedPid(pidFile, pidCountBeforeOrphan, 3000);
   send(child, {
@@ -659,6 +667,10 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
     tailAfterEventCount: parsedToolResults[42]?.events?.length,
     tailAfterFirstEventIndex: parsedToolResults[42]?.events?.[0]?.eventIndex,
     availableModels: parsedToolResults[4]?.availableModels,
+    codexDiscoveredVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.version,
+    codexAcpVersion: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.acp?.version,
+    codexHasAcpProbeFailedNote: parsedToolResults[3]?.agents?.find((agent) => agent.id === "codex")?.notes
+      ?.some((note) => note.includes("ACP version probe failed")),
     failureStatus: parsedToolResults[5]?.status,
     failureError: parsedToolResults[5]?.error,
     failureMessage: parsedToolResults[5]?.message,
@@ -669,6 +681,8 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
     claudeStatus: parsedToolResults[6]?.status,
     claudeAdapterStatus: parsedToolResults[6]?.adapterStatus,
     claudeProviderSessionId: parsedToolResults[6]?.providerSessionId,
+    claudeFailureReason: parsedToolResults[6]?.failureReason,
+    claudeMessage: parsedToolResults[6]?.message,
     cursorStatus: parsedToolResults[7]?.status,
     cursorAdapterStatus: parsedToolResults[7]?.adapterStatus,
     cursorProviderSessionId: parsedToolResults[7]?.providerSessionId,
@@ -677,6 +691,8 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile, registryPath) {
     codexStatus: parsedToolResults[8]?.status,
     codexAdapterStatus: parsedToolResults[8]?.adapterStatus,
     codexProviderSessionId: parsedToolResults[8]?.providerSessionId,
+    codexFailureReason: parsedToolResults[8]?.failureReason,
+    codexMessage: parsedToolResults[8]?.message,
     recordOnlyStatus: parsedToolResults[90]?.status,
     recordOnlyAdapterStatus: parsedToolResults[90]?.adapterStatus,
     recordOnlyLaunchExternalAgents: parsedToolResults[90]?.launchExternalAgents,

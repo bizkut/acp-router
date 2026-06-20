@@ -1535,8 +1535,9 @@ async function selectExecutable(agent, pathEntries) {
     };
   }
 
-  const probes = await Promise.all(candidates.map(async (candidate) => ({
+  const probes = await Promise.all(candidates.map(async (candidate, index) => ({
     path: candidate,
+    index,
     ...(await probeVersion(candidate, agent.versionArgs))
   })));
   const sorted = [...probes].sort(compareExecutableProbe);
@@ -1692,23 +1693,35 @@ function enrichAgentWithRegistry(agent, acpRegistry) {
   const registryAgent = acpRegistry.agentsByRouterId.get(agent.id);
   if (!registryAgent) return agent;
   const installHint = buildRegistryInstallHint(registryAgent);
+  const registryVersion = typeof registryAgent.version === "string" && registryAgent.version.trim()
+    ? registryAgent.version.trim()
+    : null;
+  const acpVersionFromRegistry = Boolean(agent.acp?.available && !agent.acp.version && registryVersion);
+  const notes = acpVersionFromRegistry
+    ? agent.notes.filter((note) => !note.startsWith("ACP version probe failed:"))
+    : agent.notes;
   return {
     ...agent,
+    version: agent.version ?? (acpVersionFromRegistry ? registryVersion : null),
     displayName: agent.displayName || registryAgent.name,
     description: registryAgent.description ?? null,
     icon: registryAgent.icon ? { kind: "registry_url", value: registryAgent.icon } : agent.icon,
     registry: {
       id: registryAgent.id,
       name: registryAgent.name,
-      version: registryAgent.version ?? null,
+      version: registryVersion,
       repository: registryAgent.repository ?? null,
       license: registryAgent.license ?? null,
       distribution: registryAgent.distribution,
       installHint
     },
+    acp: agent.acp ? {
+      ...agent.acp,
+      version: agent.acp.version ?? (agent.acp.available ? registryVersion : null)
+    } : null,
     notes: [
-      ...agent.notes,
-      `Registry: ${registryAgent.name}${registryAgent.version ? ` ${registryAgent.version}` : ""}.`,
+      ...notes,
+      `Registry: ${registryAgent.name}${registryVersion ? ` ${registryVersion}` : ""}.`,
       ...(installHint ? [`Install hint: ${installHint}`] : [])
     ]
   };
@@ -1791,7 +1804,7 @@ async function probeAgent(agent, config, pathEntries) {
 function compareExecutableProbe(a, b) {
   const versionComparison = compareVersionStrings(b.version, a.version);
   if (versionComparison !== 0) return versionComparison;
-  return a.path.localeCompare(b.path);
+  return a.index - b.index;
 }
 
 function compareVersionStrings(a, b) {

@@ -68,7 +68,9 @@ Open a new Codex thread after installing so Codex picks up the bundled skill and
 npm run check
 npm run smoke
 npm run smoke:sessions
+npm run smoke:opencode
 npm run smoke:opencode:sessions
+npm run smoke:acp:handshake
 npm run e2e:restart-recovery
 ```
 
@@ -85,6 +87,8 @@ npm run smoke:opencode
 ```
 
 `npm run smoke:opencode:sessions` verifies real OpenCode ACP `session/list` through Agent Router without sending a prompt or creating a model turn.
+
+`npm run smoke:acp:handshake` verifies the real `claude-agent-acp` and `codex-acp` adapters can initialize and create sessions in temporary git worktrees without sending prompts or making model calls. It tears down adapter process groups and checks that no new adapter processes are left behind.
 
 ## Real E2E
 

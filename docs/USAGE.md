@@ -158,6 +158,7 @@ npm run smoke
 npm run smoke:sessions
 npm run smoke:opencode
 npm run smoke:opencode:sessions
+npm run smoke:acp:handshake
 npm run e2e:restart-recovery
 ```
 
