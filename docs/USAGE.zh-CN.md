@@ -4,7 +4,7 @@ Agent Router 是一个本地 Codex 插件，用来让 Codex 通过统一的 rout
 
 在 Codex UI 中，插件仍显示为 `Agent Router`，内置 skill 显示为 `Coding Agent Dispatch`。
 
-当前状态：本地/个人插件，尚未发布到公开 Codex marketplace。
+当前状态：通过 GitHub marketplace source 分发的 public beta。
 
 ## 当前支持能力
 
@@ -43,7 +43,7 @@ codex plugin add agent-router@codex-agent-router
 固定当前 release 安装：
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.6
 codex plugin add agent-router@codex-agent-router
 ```
 
@@ -114,6 +114,7 @@ codex plugin add agent-router@personal
 ```text
 列出 Agent Router jobs。
 查看 job <jobId>。
+读取 job <jobId> 的新增事件。
 取消 job <jobId>。
 列出外部 agent sessions。
 继续 session <sessionId>，追加这个 prompt：...
@@ -131,6 +132,17 @@ codex plugin add agent-router@personal
 - `failureReason`
 - `agentErrors`
 - `logPath`
+- `events`
+- `nextEventIndex`
+- `hasMore`
+
+异步 job 可以这样轮询进度：
+
+```text
+读取 Agent Router job <jobId> 的新增事件。
+```
+
+返回的 `events` 使用从 0 开始的稳定索引。下一次调用时把上一次返回的 `nextEventIndex` 作为 `afterEventIndex`，就能只拿新增事件。
 
 ## 验证命令
 
@@ -174,10 +186,11 @@ npm run e2e:codex -- --timeout-sec 600 --keep
 | Claude 看起来卡住 | 查看 `job.agentErrors` 和 `job.logPath`；rate-limit 重试可能看起来像卡住。 |
 | Cursor Agent 认证失败 | 运行 `agent status`；必要时运行 `agent login`。 |
 | OpenCode 模型或 provider 报错 | 查看 `availableModels`；OpenCode ACP 的模型选择用项目级 `opencode.json`。 |
+| 需要进度 | 用 job id 和最新的 `afterEventIndex` 调用 `tail_coding_agent_job_events`。 |
 | 需要原始证据 | 打开 `job.logPath`，它是 JSONL 事件日志。 |
 
 ## 产品边界
 
 这个插件不会修改 Codex 原生 sidebar、消息头像或设置页 UI。V1 的体验通过 MCP tools 和 Codex thread 里的结构化结果提供。
 
-插件已经可以本地使用和内部验收。发布到公开 marketplace 仍然是后续独立发布步骤。
+插件已经可以本地使用，并可通过 GitHub marketplace source 做 public beta 验证。

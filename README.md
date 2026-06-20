@@ -17,6 +17,7 @@ This repository is an alpha implementation. It can:
 - run OpenCode through ACP stdio by default for runnable jobs, with per-call and config overrides to disable external launch.
 - run Claude Code, Cursor Agent, and Codex CLI through CLI fallback adapters.
 - launch supported adapters synchronously or as background jobs with persisted child process metadata and cancellable in-memory process tracking.
+- tail job event logs through `tail_coding_agent_job_events` so Codex can poll near-real-time progress without reading files directly.
 - recover jobs orphaned by an MCP server restart, best-effort terminate the recorded child PID, and release stale worktree locks.
 - aggregate OpenCode native ACP `session/list` results into `list_coding_agent_sessions` when external launch is enabled.
 - surface ACP session config options and available model choices without setting a model by default.
@@ -53,7 +54,7 @@ codex plugin add agent-router@codex-agent-router
 For a pinned install of the current release:
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.6
 codex plugin add agent-router@codex-agent-router
 ```
 
@@ -129,6 +130,7 @@ node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync(".codex
 - `run_coding_agent`
 - `list_coding_agent_jobs`
 - `get_coding_agent_job`
+- `tail_coding_agent_job_events`
 - `cancel_coding_agent_job`
 - `list_coding_agent_sessions`
 - `continue_coding_agent_session`

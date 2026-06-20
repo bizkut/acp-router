@@ -33,7 +33,7 @@ try {
 
   if (
     result.stderr
-    || result.serverVersion !== "0.6.5"
+    || result.serverVersion !== "0.6.6"
     || result.discoveryCount < 1
     || result.defaultLaunchExternalAgents !== true
     || result.configuredLaunchExternalAgents !== false
@@ -42,6 +42,14 @@ try {
     || result.runLaunchExternalAgents !== true
     || result.runInheritEnvironment !== true
     || result.providerSessionId !== "fake-opencode-session"
+    || result.tailStatus !== "completed"
+    || result.tailEventCount !== 2
+    || result.tailFirstEventIndex !== 0
+    || result.tailNextEventIndex !== 1
+    || result.tailHasMore !== true
+    || result.tailLogTailHasText !== true
+    || result.tailAfterEventCount !== 1
+    || result.tailAfterFirstEventIndex !== 2
     || !result.availableModels?.some((model) => model.value === "opencode-go/glm-5.2")
     || result.failureStatus !== "timed_out"
     || !result.failureReason?.includes("Insufficient balance")
@@ -258,7 +266,37 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
     }
   });
 
-  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 4), 3000);
+  const runMessage = await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 4), 3000);
+  const runResult = parseToolResult(runMessage);
+  send(child, {
+    jsonrpc: "2.0",
+    id: 41,
+    method: "tools/call",
+    params: {
+      name: "tail_coding_agent_job_events",
+      arguments: {
+        jobId: runResult?.jobId,
+        limit: 2,
+        includeLogTail: true,
+        logTailBytes: 512
+      }
+    }
+  });
+  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 41), 3000);
+  send(child, {
+    jsonrpc: "2.0",
+    id: 42,
+    method: "tools/call",
+    params: {
+      name: "tail_coding_agent_job_events",
+      arguments: {
+        jobId: runResult?.jobId,
+        afterEventIndex: 1,
+        limit: 1
+      }
+    }
+  });
+  await waitForMessage(() => parseMessages(first.stdout).find((message) => message.id === 42), 3000);
   send(child, {
     jsonrpc: "2.0",
     id: 5,
@@ -510,6 +548,15 @@ async function runMcpSmoke(home, worktree, binDirs, pidFile) {
     runLaunchExternalAgents: parsedToolResults[4]?.launchExternalAgents,
     runInheritEnvironment: parsedToolResults[4]?.inheritEnvironment,
     providerSessionId: parsedToolResults[4]?.providerSessionId,
+    tailStatus: parsedToolResults[41]?.status,
+    tailEventCount: parsedToolResults[41]?.events?.length,
+    tailFirstEventIndex: parsedToolResults[41]?.events?.[0]?.eventIndex,
+    tailNextEventIndex: parsedToolResults[41]?.nextEventIndex,
+    tailHasMore: parsedToolResults[41]?.hasMore,
+    tailLogTailHasText: typeof parsedToolResults[41]?.logTail?.text === "string"
+      && parsedToolResults[41].logTail.text.length > 0,
+    tailAfterEventCount: parsedToolResults[42]?.events?.length,
+    tailAfterFirstEventIndex: parsedToolResults[42]?.events?.[0]?.eventIndex,
     availableModels: parsedToolResults[4]?.availableModels,
     failureStatus: parsedToolResults[5]?.status,
     failureError: parsedToolResults[5]?.error,

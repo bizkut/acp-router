@@ -57,16 +57,18 @@ try {
     toolCount: toolsList?.result?.tools?.length ?? 0,
     usedContentLengthOutput: state.stdout.includes("Content-Length:"),
     hasDiscoverCodingAgents: toolNames.has("discover_coding_agents"),
-    hasRunCodingAgent: toolNames.has("run_coding_agent")
+    hasRunCodingAgent: toolNames.has("run_coding_agent"),
+    hasTailJobEvents: toolNames.has("tail_coding_agent_job_events")
   };
 
   console.log(JSON.stringify(result, null, 2));
   if (
     result.stderr
-    || result.serverVersion !== "0.6.5"
+    || result.serverVersion !== "0.6.6"
     || result.usedContentLengthOutput
     || !result.hasDiscoverCodingAgents
     || !result.hasRunCodingAgent
+    || !result.hasTailJobEvents
   ) {
     process.exitCode = 1;
   }

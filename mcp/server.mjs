@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "agent-router";
-const SERVER_VERSION = "0.6.5";
+const SERVER_VERSION = "0.6.6";
 const DATA_DIR = process.env.AGENT_ROUTER_DATA_DIR
   ? path.resolve(process.env.AGENT_ROUTER_DATA_DIR)
   : process.env.AGENT_DISPATCHER_DATA_DIR
@@ -113,6 +113,22 @@ const TOOL_DEFINITIONS = [
       required: ["jobId"],
       properties: {
         jobId: { type: "string" }
+      },
+      additionalProperties: false
+    }
+  },
+  {
+    name: "tail_coding_agent_job_events",
+    description: "Return newly recorded Agent Router job events from the JSONL event log for polling-style progress updates.",
+    inputSchema: {
+      type: "object",
+      required: ["jobId"],
+      properties: {
+        jobId: { type: "string" },
+        afterEventIndex: { type: "integer", minimum: 0 },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 50 },
+        includeLogTail: { type: "boolean", default: false },
+        logTailBytes: { type: "integer", minimum: 1, maximum: 65536, default: 8192 }
       },
       additionalProperties: false
     }
@@ -324,6 +340,8 @@ async function callTool(name, args) {
       return listJobs(args);
     case "get_coding_agent_job":
       return getJob(args);
+    case "tail_coding_agent_job_events":
+      return tailJobEvents(args);
     case "cancel_coding_agent_job":
       return cancelJob(args);
     case "list_coding_agent_sessions":
@@ -764,6 +782,55 @@ async function getJob(args) {
   const job = registry.jobs[args.jobId];
   if (!job) return { jobId: args.jobId, status: "not_found" };
   return { job };
+}
+
+async function tailJobEvents(args) {
+  const registry = await readRegistry();
+  const job = registry.jobs[args.jobId];
+  if (!job) {
+    return {
+      jobId: args.jobId,
+      status: "not_found",
+      events: [],
+      nextEventIndex: null,
+      hasMore: false,
+      note: "No Agent Router job exists for this jobId."
+    };
+  }
+
+  const limit = clampInteger(args.limit, 50, 1, 200);
+  const afterEventIndex = Number.isInteger(args.afterEventIndex) ? args.afterEventIndex : null;
+  const startIndex = afterEventIndex == null ? 0 : afterEventIndex + 1;
+  const eventLog = await readJobEventLog(job.logPath);
+  const totalEvents = eventLog.events.length;
+  const events = eventLog.events.slice(startIndex, startIndex + limit);
+  const lastReturned = events.length > 0
+    ? events[events.length - 1].eventIndex
+    : afterEventIndex;
+  const result = {
+    jobId: job.jobId,
+    status: job.status,
+    agentId: job.agentId,
+    sessionId: job.sessionId,
+    adapterStatus: job.adapterStatus ?? null,
+    providerSessionId: registry.sessions[job.sessionId]?.providerSessionId ?? null,
+    failureReason: job.failureReason ?? null,
+    changedFiles: Array.isArray(job.changedFiles) ? job.changedFiles : [],
+    risks: Array.isArray(job.risks) ? job.risks : [],
+    startedAt: job.startedAt ?? null,
+    endedAt: job.endedAt ?? null,
+    logPath: job.logPath ?? null,
+    events,
+    nextEventIndex: lastReturned,
+    hasMore: startIndex + events.length < totalEvents,
+    totalEventCount: totalEvents
+  };
+  if (eventLog.note) result.note = eventLog.note;
+  if (eventLog.parseErrors.length > 0) result.parseErrors = eventLog.parseErrors;
+  if (args.includeLogTail === true) {
+    result.logTail = await readLogTail(job.logPath, clampInteger(args.logTailBytes, 8192, 1, 65536));
+  }
+  return result;
 }
 
 async function cancelJob(args) {
@@ -1260,6 +1327,95 @@ async function readJson(filePath, fallback) {
   }
 }
 
+async function readJobEventLog(logPath) {
+  const result = {
+    events: [],
+    parseErrors: [],
+    note: null
+  };
+  if (typeof logPath !== "string" || !logPath) {
+    return {
+      ...result,
+      note: "This job does not have a logPath recorded yet."
+    };
+  }
+  let raw = "";
+  try {
+    raw = await fs.readFile(logPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return {
+        ...result,
+        note: "The job log file does not exist yet."
+      };
+    }
+    return {
+      ...result,
+      note: `The job log could not be read: ${error.message}`
+    };
+  }
+  const lines = raw.split(/\r?\n/);
+  for (let lineNumber = 0; lineNumber < lines.length; lineNumber += 1) {
+    const line = lines[lineNumber].trim();
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line);
+      result.events.push({
+        ...(isPlainObject(parsed) ? parsed : { payload: parsed }),
+        eventIndex: result.events.length
+      });
+    } catch (error) {
+      result.parseErrors.push({
+        lineNumber: lineNumber + 1,
+        message: error.message
+      });
+    }
+  }
+  return result;
+}
+
+async function readLogTail(logPath, byteLimit) {
+  if (typeof logPath !== "string" || !logPath) {
+    return {
+      text: "",
+      bytes: 0,
+      truncated: false,
+      note: "This job does not have a logPath recorded yet."
+    };
+  }
+  try {
+    const stats = await fs.stat(logPath);
+    const bytesToRead = Math.min(stats.size, byteLimit);
+    const handle = await fs.open(logPath, "r");
+    try {
+      const buffer = Buffer.alloc(bytesToRead);
+      await handle.read(buffer, 0, bytesToRead, Math.max(0, stats.size - bytesToRead));
+      return {
+        text: buffer.toString("utf8"),
+        bytes: bytesToRead,
+        truncated: stats.size > bytesToRead
+      };
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return {
+        text: "",
+        bytes: 0,
+        truncated: false,
+        note: "The job log file does not exist yet."
+      };
+    }
+    return {
+      text: "",
+      bytes: 0,
+      truncated: false,
+      note: `The job log could not be read: ${error.message}`
+    };
+  }
+}
+
 async function writeJson(filePath, payload) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -1269,6 +1425,12 @@ async function appendJsonl(filePath, entries) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   const lines = entries.map((entry) => JSON.stringify(entry)).join("\n");
   await fs.appendFile(filePath, `${lines}\n`, "utf8");
+}
+
+function clampInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(Math.max(parsed, minimum), maximum);
 }
 
 async function validateWorktree(worktree) {

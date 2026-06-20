@@ -4,7 +4,7 @@ Agent Router is a local Codex plugin that lets Codex discover, run, track, cance
 
 In Codex UI, the plugin remains `Agent Router` and the bundled skill appears as `Coding Agent Dispatch`.
 
-Current status: local/personal plugin, not yet published to the public Codex marketplace.
+Current status: public beta distributed through the GitHub marketplace source.
 
 ## What It Supports
 
@@ -43,7 +43,7 @@ codex plugin add agent-router@codex-agent-router
 Pinned release install:
 
 ```bash
-codex plugin marketplace add peanut996/codex-agent-router@v0.6.5
+codex plugin marketplace add peanut996/codex-agent-router@v0.6.6
 codex plugin add agent-router@codex-agent-router
 ```
 
@@ -114,6 +114,7 @@ Common user-facing requests:
 ```text
 List Agent Router jobs.
 Show job <jobId>.
+Tail new events for job <jobId>.
 Cancel job <jobId>.
 List external agent sessions.
 Continue session <sessionId> with this follow-up prompt: ...
@@ -131,6 +132,17 @@ Important returned fields:
 - `failureReason`
 - `agentErrors`
 - `logPath`
+- `events`
+- `nextEventIndex`
+- `hasMore`
+
+For async jobs, poll progress with:
+
+```text
+Tail Agent Router job <jobId> events.
+```
+
+The returned `events` are zero-indexed. Pass the previous `nextEventIndex` as `afterEventIndex` on the next call to get only new events.
 
 ## Validation Commands
 
@@ -174,10 +186,11 @@ A passing real E2E should include:
 | Claude appears stuck | Inspect `job.agentErrors` and `job.logPath`; rate-limit retries can look like a hang. |
 | Cursor Agent fails auth | Run `agent status`; if needed, run `agent login`. |
 | OpenCode model/provider error | Inspect `availableModels`; for OpenCode ACP, use project-level `opencode.json` for model selection. |
+| Need progress | Call `tail_coding_agent_job_events` with the job id and latest `afterEventIndex`. |
 | Need raw evidence | Open `job.logPath`, which is a JSONL event log. |
 
 ## Product Boundaries
 
 This plugin does not modify the native Codex sidebar, message avatars, or settings UI. V1 exposes the experience through MCP tools and structured results inside Codex threads.
 
-The plugin is ready for local use and internal validation. Public marketplace publication is still a separate release step.
+The plugin is ready for local use and public beta validation through the GitHub marketplace source.
