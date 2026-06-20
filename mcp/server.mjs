@@ -8,7 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const SERVER_NAME = "agent-router";
-const SERVER_VERSION = "0.6.2";
+const SERVER_VERSION = "0.6.3";
 const DATA_DIR = process.env.AGENT_ROUTER_DATA_DIR
   ? path.resolve(process.env.AGENT_ROUTER_DATA_DIR)
   : process.env.AGENT_DISPATCHER_DATA_DIR
@@ -220,7 +220,10 @@ const BUILT_IN_AGENTS = [
   }
 ];
 
+const FRAME_CONTENT_LENGTH = "content-length";
+const FRAME_JSONL = "jsonl";
 let buffer = "";
+let fallbackResponseFraming = FRAME_CONTENT_LENGTH;
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", (chunk) => {
@@ -230,31 +233,54 @@ process.stdin.on("data", (chunk) => {
       jsonrpc: "2.0",
       id: null,
       error: { code: -32603, message: error.message }
-    });
+    }, fallbackResponseFraming);
   });
 });
 
 async function drainBuffer() {
   while (true) {
-    const headerEnd = buffer.indexOf("\r\n\r\n");
-    if (headerEnd === -1) return;
-    const header = buffer.slice(0, headerEnd);
-    const match = /^Content-Length:\s*(\d+)$/im.exec(header);
-    if (!match) {
-      buffer = "";
-      throw new Error("Missing Content-Length header");
+    const blankPrefix = /^[\r\n]+/.exec(buffer);
+    if (blankPrefix) {
+      buffer = buffer.slice(blankPrefix[0].length);
+      continue;
     }
-    const length = Number(match[1]);
-    const bodyStart = headerEnd + 4;
-    const bodyEnd = bodyStart + length;
-    if (buffer.length < bodyEnd) return;
-    const raw = buffer.slice(bodyStart, bodyEnd);
-    buffer = buffer.slice(bodyEnd);
-    await handleMessage(JSON.parse(raw));
+
+    let raw = null;
+    let framing = FRAME_CONTENT_LENGTH;
+    if (/^Content-Length:/i.test(buffer)) {
+      const headerEnd = buffer.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+      const header = buffer.slice(0, headerEnd);
+      const match = /^Content-Length:\s*(\d+)$/im.exec(header);
+      if (!match) {
+        buffer = "";
+        throw new Error("Missing Content-Length header");
+      }
+      const length = Number(match[1]);
+      const bodyStart = headerEnd + 4;
+      const bodyEnd = bodyStart + length;
+      if (buffer.length < bodyEnd) return;
+      raw = buffer.slice(bodyStart, bodyEnd);
+      buffer = buffer.slice(bodyEnd);
+      framing = FRAME_CONTENT_LENGTH;
+    } else {
+      const lineEnd = buffer.indexOf("\n");
+      if (lineEnd === -1) {
+        if ("content-length:".startsWith(buffer.toLowerCase())) return;
+        return;
+      }
+      raw = buffer.slice(0, lineEnd).replace(/\r$/, "");
+      buffer = buffer.slice(lineEnd + 1);
+      if (!raw.trim()) continue;
+      framing = FRAME_JSONL;
+    }
+
+    fallbackResponseFraming = framing;
+    await handleMessage(JSON.parse(raw), framing);
   }
 }
 
-async function handleMessage(message) {
+async function handleMessage(message, framing = FRAME_CONTENT_LENGTH) {
   if (!message || typeof message !== "object") return;
   const { id, method, params } = message;
 
@@ -266,17 +292,17 @@ async function handleMessage(message) {
         protocolVersion: "2024-11-05",
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION }
-      });
+      }, framing);
     }
-    if (method === "ping") return writeResult(id, {});
-    if (method === "tools/list") return writeResult(id, { tools: TOOL_DEFINITIONS });
+    if (method === "ping") return writeResult(id, {}, framing);
+    if (method === "tools/list") return writeResult(id, { tools: TOOL_DEFINITIONS }, framing);
     if (method === "tools/call") {
       const result = await callTool(params?.name, params?.arguments ?? {});
-      return writeResult(id, asToolResult(result));
+      return writeResult(id, asToolResult(result), framing);
     }
-    writeError(id, -32601, `Unsupported method: ${method}`);
+    writeError(id, -32601, `Unsupported method: ${method}`, framing);
   } catch (error) {
-    writeResult(id, asToolResult({ error: error.message }, true));
+    writeResult(id, asToolResult({ error: error.message }, true), framing);
   }
 }
 
@@ -2543,15 +2569,19 @@ function asToolResult(payload, isError = false) {
   };
 }
 
-function writeResult(id, result) {
-  writeMessage({ jsonrpc: "2.0", id, result });
+function writeResult(id, result, framing = FRAME_CONTENT_LENGTH) {
+  writeMessage({ jsonrpc: "2.0", id, result }, framing);
 }
 
-function writeError(id, code, message) {
-  writeMessage({ jsonrpc: "2.0", id, error: { code, message } });
+function writeError(id, code, message, framing = FRAME_CONTENT_LENGTH) {
+  writeMessage({ jsonrpc: "2.0", id, error: { code, message } }, framing);
 }
 
-function writeMessage(message) {
+function writeMessage(message, framing = FRAME_CONTENT_LENGTH) {
   const body = JSON.stringify(message);
+  if (framing === FRAME_JSONL) {
+    process.stdout.write(`${body}\n`);
+    return;
+  }
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
 }
