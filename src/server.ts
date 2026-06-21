@@ -19,7 +19,8 @@ import {
   cancelJob,
   listSessions,
   continueSession,
-  archiveSession
+  archiveSession,
+  readSession
 } from "./jobs.js";
 
 async function startMcpServer(): Promise<void> {
@@ -164,9 +165,9 @@ async function startMcpServer(): Promise<void> {
 
   registerTool(
     "manage_sessions",
-    "List, continue, or archive Agent Router sessions. Use action='list' to enumerate sessions, action='continue' to resume a session with a new prompt, or action='archive' to mark a session as archived.",
+    "List, read, continue, or archive Agent Router sessions. Use action='list' to enumerate sessions, action='read' to load a session's conversation history, action='continue' to resume a session with a new prompt, or action='archive' to mark a session as archived.",
     {
-      action: z.enum(["list", "continue", "archive"]).describe("Session action to perform"),
+      action: z.enum(["list", "read", "continue", "archive"]).describe("Session action to perform"),
       includeArchived: z.boolean().optional().describe("Include archived sessions in list results"),
       agent: z.string().optional().describe("Filter by agent id (list) or specify agent for continue"),
       worktree: z.string().optional().describe("Filter by worktree path (list) or specify worktree for continue"),
@@ -185,6 +186,21 @@ async function startMcpServer(): Promise<void> {
           agent: args.agent,
           worktree: args.worktree,
           limit: args.limit
+        }));
+      }
+      if (args.action === "read") {
+        if (!args.sessionId) {
+          return toToolResult({
+            sessionId: null,
+            status: "failed",
+            error: "missing_session_id",
+            message: "sessionId is required when action is 'read'."
+          });
+        }
+        return toToolResult(await readSession({
+          sessionId: args.sessionId,
+          agent: args.agent,
+          worktree: args.worktree
         }));
       }
       if (args.action === "continue") {

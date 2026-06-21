@@ -702,6 +702,121 @@ async function listAcpNativeSessions({ selectedAgent, worktree, env }: {
   }
 }
 
+async function readAcpSession({ selectedAgent, providerSessionId, worktree, env }: {
+  selectedAgent: any;
+  providerSessionId: string;
+  worktree: string | null;
+  env: Record<string, string | undefined>;
+}): Promise<{ supported: boolean; events: any[]; sessionInfo: any }> {
+  const cwd = worktree ?? process.cwd();
+  const launchTarget = resolveAcpLaunchTarget(selectedAgent.acp, selectedAgent, cwd);
+  if (!launchTarget) throw new Error(`No ACP adapter is available for ${selectedAgent.id}.`);
+  const events: any[] = [];
+  const client = new AcpStdioClient({
+    command: launchTarget.command,
+    args: launchTarget.args,
+    cwd,
+    timeoutMs: 30000,
+    env,
+    onEvent: (event: any) => {
+      events.push(event);
+    }
+  });
+  try {
+    await client.start();
+    const initialize = await client.request("initialize", {
+      protocolVersion: 1,
+      clientCapabilities: {},
+      clientInfo: {
+        name: SERVER_NAME,
+        title: "Agent Router",
+        version: SERVER_VERSION
+      }
+    });
+    const supported = Boolean(initialize?.agentCapabilities?.loadSession);
+    if (!supported) return { supported: false, events: [], sessionInfo: null };
+
+    const result = await client.request("session/load", {
+      sessionId: providerSessionId,
+      cwd,
+      mcpServers: []
+    });
+    return {
+      supported: true,
+      events,
+      sessionInfo: {
+        sessionId: providerSessionId,
+        replayedEvents: events.length,
+        loadResult: result
+      }
+    };
+  } finally {
+    client.dispose();
+  }
+}
+
+async function readSession(args: { sessionId: string; agent?: string; worktree?: string }): Promise<any> {
+  const registry = await readRegistry();
+  const config = await readConfig();
+
+  const localSession = registry.sessions[args.sessionId];
+  const isNative = args.sessionId.startsWith("sess_native_");
+  let agentId: string | null = null;
+  let providerSessionId: string | null = null;
+  let worktree: string | null = args.worktree ?? null;
+
+  if (localSession) {
+    agentId = typeof localSession.agentId === "string" ? localSession.agentId : null;
+    providerSessionId = typeof localSession.providerSessionId === "string" ? localSession.providerSessionId : args.sessionId;
+    worktree = worktree ?? (typeof localSession.worktree === "string" ? localSession.worktree : null);
+  } else if (isNative) {
+    const parsed = parseNativeDispatcherSessionId(args.sessionId);
+    if (parsed) {
+      agentId = parsed.agentId;
+      providerSessionId = parsed.providerSessionId;
+    }
+  }
+
+  if (args.agent) agentId = args.agent;
+  if (!agentId) {
+    return { error: "agent_not_found", message: "Could not determine agent for session." };
+  }
+
+  const { agents } = await discoverAgents({ includeNotInstalled: false });
+  const selectedAgent = agents.find((a: any) => a.id === agentId);
+  if (!selectedAgent) {
+    return { error: "agent_not_found", agentId, message: `Agent ${agentId} not found.` };
+  }
+  if (!selectedAgent.acp?.available) {
+    return { error: "acp_not_available", agentId };
+  }
+
+  const env = safeEnv({ inheritEnvironment: config.safety.inheritEnvironment === true });
+  try {
+    const result = await readAcpSession({
+      selectedAgent,
+      providerSessionId: providerSessionId ?? args.sessionId,
+      worktree,
+      env
+    });
+    return {
+      sessionId: args.sessionId,
+      agentId,
+      providerSessionId,
+      worktree,
+      ...result
+    };
+  } catch (error) {
+    return {
+      sessionId: args.sessionId,
+      agentId,
+      providerSessionId,
+      error: "read_failed",
+      message: (error as Error).message
+    };
+  }
+}
+
 function mapNativeSessions({ nativeSessions, registry, args, agentId }: {
   nativeSessions: any[];
   registry: any;
@@ -892,5 +1007,6 @@ export {
   decodeBase64Url,
   continueSession,
   archiveSession,
+  readSession,
   findActiveWorktreeJob
 };
