@@ -71,6 +71,7 @@ interface ConfigureDispatcherArgs {
 interface DiscoverAgentsArgs {
   refresh?: boolean;
   includeNotInstalled?: boolean;
+  excludeAgent?: string;
 }
 
 interface AcpAdapterSpec {
@@ -105,7 +106,7 @@ interface EnrichedAgent {
 interface DiscoverAgentsResult {
   agents: EnrichedAgent[];
   recommendedDefaultAgent: { agentId: string; reason: string } | null;
-  callerAgentId: string | null;
+  excludedAgentId: string | null;
   registry: any;
   refreshedAt: string;
 }
@@ -181,22 +182,10 @@ interface PlanLaunchArgs {
   selectedAgent: EnrichedAgent;
 }
 
-function detectCallerAgentId(): string | null {
-  const explicit = process.env.ACP_ROUTER_CALLER;
-  if (explicit && explicit.trim()) return explicit.trim();
-  const env = process.env;
-  if (env.CLAUDE_CONFIG_DIR || env.CLAUDE_CODE_OAUTH_TOKEN || env.ANTHROPIC_API_KEY) return "claude";
-  if (env.CURSOR_API_KEY || env.CURSOR_AGENT_EXECUTABLE) return "cursor-agent";
-  if (env.DEVIN_API_KEY) return "devin";
-  if (env.OPENAI_API_KEY && env.CODEX_HOME) return "codex";
-  return null;
-}
-
 async function discoverAgents(args: DiscoverAgentsArgs): Promise<DiscoverAgentsResult> {
   const config = await readConfig() as DispatcherConfig;
   const pathEntries = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
   const acpRegistry = await readAcpRegistry(config as any, { refresh: args.refresh === true });
-  const callerAgentId = detectCallerAgentId();
   const agents = await Promise.all(BUILT_IN_AGENTS.map(async (agent) => enrichAgentWithRegistry(
     await probeAgent(agent, config, pathEntries),
     acpRegistry
@@ -204,13 +193,13 @@ async function discoverAgents(args: DiscoverAgentsArgs): Promise<DiscoverAgentsR
   const filteredAgents = args.includeNotInstalled === false
     ? agents.filter((agent) => agent.status !== "not_installed")
     : agents;
-  const visibleAgents = callerAgentId
-    ? filteredAgents.filter((agent) => agent.id !== callerAgentId)
+  const visibleAgents = args.excludeAgent
+    ? filteredAgents.filter((agent) => agent.id !== args.excludeAgent)
     : filteredAgents;
   return {
     agents: visibleAgents,
     recommendedDefaultAgent: null,
-    callerAgentId,
+    excludedAgentId: args.excludeAgent ?? null,
     registry: acpRegistry.meta,
     refreshedAt: new Date().toISOString()
   };

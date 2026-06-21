@@ -31,11 +31,13 @@ async function startMcpServer(): Promise<void> {
     "Discover locally installed coding agents and their ACP adapter status. Returns transport, ACP availability, registry metadata, and install hints.",
     {
       refresh: z.boolean().optional().describe("Force refresh the ACP registry cache"),
-      includeNotInstalled: z.boolean().optional().describe("Include agents that are not currently installed")
+      includeNotInstalled: z.boolean().optional().describe("Include agents that are not currently installed"),
+      excludeAgent: z.string().optional().describe("Agent id to exclude from results (e.g. pass your own agent id to avoid self-dispatch)")
     },
     async (args: any) => toToolResult(await discoverAgents({
       refresh: args.refresh === true,
-      includeNotInstalled: args.includeNotInstalled !== false
+      includeNotInstalled: args.includeNotInstalled !== false,
+      excludeAgent: typeof args.excludeAgent === "string" ? args.excludeAgent : undefined
     }))
   );
 
@@ -44,11 +46,12 @@ async function startMcpServer(): Promise<void> {
     "Probe an ACP agent for its available model list. Starts a temporary ACP session, reads config options, and returns model choices. Use this before run_agent to discover valid model ids.",
     {
       agent: z.string().describe("Agent id to probe (e.g. opencode, claude, codex)"),
-      worktree: z.string().optional().describe("Worktree path for the ACP session (defaults to cwd)")
+      worktree: z.string().optional().describe("Worktree path for the ACP session (defaults to cwd)"),
+      excludeAgent: z.string().optional().describe("Agent id to exclude from discovery (pass your own id to avoid self-dispatch)")
     },
     async (args: any) => {
       const config = await readConfig();
-      const { agents } = await discoverAgents({ includeNotInstalled: false });
+      const { agents } = await discoverAgents({ includeNotInstalled: false, excludeAgent: args.excludeAgent });
       const selectedAgent = agents.find((a: any) => a.id === args.agent);
       if (!selectedAgent) {
         return toToolResult({ error: "agent_not_found", agentId: args.agent, availableAgents: agents.map((a: any) => a.id) });

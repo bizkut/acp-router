@@ -211,36 +211,6 @@ The maximum allowed depth is **3**. If you need to change the starting depth for
 }
 ```
 
-### ACP_ROUTER_CALLER
-
-Identifies which agent is calling ACP Router, so `discover_agents` can exclude the caller from the agent list. This prevents an agent from dispatching tasks to itself.
-
-Set this to the agent id of the MCP client you are using:
-
-| MCP Client | Value |
-| --- | --- |
-| Claude Code / Claude Desktop | `claude` |
-| Cursor | `cursor-agent` |
-| Codex | `codex` |
-| Devin | `devin` |
-| OpenCode | `opencode` |
-
-```json
-{
-  "mcpServers": {
-    "acp-router": {
-      "command": "npx",
-      "args": ["@peanut996/acp-router"],
-      "env": {
-        "ACP_ROUTER_CALLER": "claude"
-      }
-    }
-  }
-}
-```
-
-If not set, ACP Router will try to auto-detect the caller from environment variables (e.g. `CLAUDE_CONFIG_DIR` → claude, `CURSOR_API_KEY` → cursor-agent).
-
 ## Verifying the Setup
 
 After configuring your MCP client, verify that ACP Router is working:

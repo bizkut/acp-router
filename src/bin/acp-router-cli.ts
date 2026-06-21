@@ -106,7 +106,8 @@ Options:
 async function cmdAgents(args: Record<string, any>): Promise<void> {
   const result = await discoverAgents({
     refresh: args.refresh === true,
-    includeNotInstalled: args["include-not-installed"] !== "false"
+    includeNotInstalled: args["include-not-installed"] !== "false",
+    excludeAgent: typeof args.exclude === "string" ? args.exclude : undefined
   });
   printJson(result);
 }
