@@ -12,6 +12,7 @@ import {
 } from "./constants.js";
 import { isPlainObject } from "./utils.js";
 import { ACTIVE_RUNS } from "./jobs.js";
+import { isJobOwnedByLiveRouter, shouldRecoverJob } from "./ownership.js";
 
 let orphanRecoveryPromise: Promise<unknown> | null = null;
 
@@ -58,6 +59,11 @@ interface Job {
   failureReason?: string;
   resultSummary?: string;
   process?: JobProcessInfo;
+  owner?: {
+    instanceId?: string;
+    pid?: number;
+    startedAt?: string;
+  };
   risks?: string[];
   recentEvents?: JobEvent[];
   logPath?: string;
@@ -352,7 +358,8 @@ async function recoverOrphanedJobs(): Promise<{ recoveredCount: number }> {
 
   for (const job of Object.values(registry.jobs)) {
     if (!isPlainObject(job)) continue;
-    if (!ACTIVE_JOB_STATUSES.has(job.status) || ACTIVE_RUNS.has(job.jobId)) continue;
+    if (!ACTIVE_JOB_STATUSES.has(job.status)) continue;
+    if (!shouldRecoverJob(job, ACTIVE_RUNS.has(job.jobId))) continue;
     const previousStatus = job.status;
     const processKill = bestEffortKillJobProcess(job, recoveredAt);
     const message = processKill?.status === "signal_sent"
@@ -441,7 +448,10 @@ function updateSessionAfterOrphanedJob(registry: Registry, job: Job, recoveredAt
     isPlainObject(candidate)
     && (candidate as Job).sessionId === session.sessionId
     && ACTIVE_JOB_STATUSES.has((candidate as Job).status)
-    && ACTIVE_RUNS.has((candidate as Job).jobId)
+    && (
+      ACTIVE_RUNS.has((candidate as Job).jobId)
+      || isJobOwnedByLiveRouter(candidate as Job)
+    )
   ));
   if (hasCurrentOwnedRun) return;
   if (session.lastJobId !== job.jobId && !ACTIVE_JOB_STATUSES.has(session.status ?? "")) return;

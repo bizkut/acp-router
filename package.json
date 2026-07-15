@@ -36,6 +36,7 @@
   "scripts": {
     "build": "tsgo && chmod +x dist/bin/acp-router.js dist/bin/acp-router-cli.js",
     "check": "tsgo --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
     "start": "node ./dist/bin/acp-router.js",
     "start:mcp": "node ./dist/server.js",
     "prepublishOnly": "tsgo && chmod +x dist/bin/acp-router.js dist/bin/acp-router-cli.js"

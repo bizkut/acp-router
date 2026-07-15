@@ -39,6 +39,7 @@ import {
   resolveAcpLaunchTarget
 } from "./agents.js";
 import { AcpStdioClient, runAcpStdioJob } from "./acp-client.js";
+import { ROUTER_OWNER } from "./ownership.js";
 
 interface JobArgs {
   agent?: string | null;
@@ -243,6 +244,7 @@ async function createJob(args: JobArgs): Promise<any> {
 
   const job: any = {
     jobId,
+    owner: ROUTER_OWNER,
     sessionId,
     agentId: selected.agentId,
     status: initialStatus,

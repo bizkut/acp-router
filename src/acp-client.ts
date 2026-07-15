@@ -110,6 +110,17 @@ interface InitializeSummary {
   authMethods: { id: any; name: any }[];
 }
 
+interface PermissionOption {
+  optionId: string;
+  kind?: string;
+}
+
+type PermissionOutcome =
+  | { outcome: "cancelled" }
+  | { outcome: "selected"; optionId: string };
+
+type SessionContinuationMethod = "session/resume" | "session/load";
+
 interface RunAcpStdioJobArgs {
   args: { worktree: string; prompt: string; model?: string | null; collectDiff?: boolean };
   job: {
@@ -292,12 +303,16 @@ class AcpStdioClient {
   handleClientRequest(message: any): void {
     if (message.method === "session/request_permission") {
       const outcome = this.resolvePermissionOutcome(message.params);
+      const approved = isApprovedPermissionOutcome(outcome, message.params);
+      const rejected = outcome.outcome === "selected" && !approved;
       this.logEvents.push({
-        type: outcome === "approved" ? "acp_permission_approved" : "acp_permission_cancelled",
+        type: approved ? "acp_permission_approved" : rejected ? "acp_permission_rejected" : "acp_permission_cancelled",
         timestamp: new Date().toISOString(),
-        message: outcome === "approved"
+        message: approved
           ? `Agent Router approved an ACP permission request (${this.permissionProfile}).`
-          : "Agent Router cancelled an ACP permission request.",
+          : rejected
+            ? `Agent Router rejected an ACP permission request (${this.permissionProfile}).`
+            : "Agent Router cancelled an ACP permission request.",
         params: message.params
       });
       this.respond(message.id, { outcome });
@@ -306,21 +321,8 @@ class AcpStdioClient {
     this.respondError(message.id, -32601, `Unsupported client method: ${message.method}`);
   }
 
-  resolvePermissionOutcome(params: any): "approved" | "cancelled" {
-    switch (this.permissionProfile) {
-      case "bypassPermissions":
-        return "approved";
-      case "acceptEdits": {
-        const perms = params?.permissions ?? [];
-        const hasNonFilePermission = perms.some((p: any) => p.type !== "file_edit" && p.type !== "write");
-        if (hasNonFilePermission) return "cancelled";
-        return "approved";
-      }
-      case "plan":
-        return "cancelled";
-      default:
-        return "cancelled";
-    }
+  resolvePermissionOutcome(params: any): PermissionOutcome {
+    return selectPermissionOutcome(this.permissionProfile, params);
   }
 
   handleNotification(message: any): void {
@@ -415,6 +417,84 @@ function summarizeInitializeResult(result: any): InitializeSummary {
     },
     authMethods: (result.authMethods ?? []).map((method: any) => ({ id: method.id, name: method.name }))
   };
+}
+
+function selectPermissionOutcome(permissionProfile: PermissionProfile, params: any): PermissionOutcome {
+  const options: PermissionOption[] = Array.isArray(params?.options)
+    ? params.options.filter((option: any) => typeof option?.optionId === "string" && option.optionId)
+    : [];
+  const allowOptions = options.filter((option) => option.kind === "allow_once" || option.kind === "allow_always");
+  const rejection = options.find((option) => option.kind === "reject_once")
+    ?? options.find((option) => option.kind === "reject_always");
+
+  if (permissionProfile === "plan") {
+    return rejection
+      ? { outcome: "selected", optionId: rejection.optionId }
+      : { outcome: "cancelled" };
+  }
+
+  if (permissionProfile === "acceptEdits" && Array.isArray(params?.permissions) && params.permissions.length > 0) {
+    const hasNonFilePermission = params.permissions.some((permission: any) => (
+      permission?.type !== "file_edit" && permission?.type !== "write"
+    ));
+    if (hasNonFilePermission) {
+      return rejection
+        ? { outcome: "selected", optionId: rejection.optionId }
+        : { outcome: "cancelled" };
+    }
+  }
+
+  const preferred = permissionProfile === "bypassPermissions"
+    ? allowOptions.find((option) => option.optionId === "switch_bypass")
+      ?? allowOptions.find((option) => option.kind === "allow_always")
+      ?? allowOptions[0]
+    : allowOptions.find((option) => option.kind === "allow_once")
+      ?? allowOptions[0];
+
+  if (preferred) return { outcome: "selected", optionId: preferred.optionId };
+  if (rejection) return { outcome: "selected", optionId: rejection.optionId };
+  return { outcome: "cancelled" };
+}
+
+function isApprovedPermissionOutcome(outcome: PermissionOutcome, params: any): boolean {
+  if (outcome.outcome !== "selected") return false;
+  const selected = Array.isArray(params?.options)
+    ? params.options.find((option: any) => option?.optionId === outcome.optionId)
+    : null;
+  return selected?.kind === "allow_once" || selected?.kind === "allow_always";
+}
+
+function chooseSessionContinuationMethod(initialize: any): SessionContinuationMethod | null {
+  const capabilities = initialize?.agentCapabilities ?? {};
+  const resume = capabilities.sessionCapabilities?.resume;
+  if (resume === true || isPlainObject(resume)) return "session/resume";
+  if (capabilities.loadSession === true) return "session/load";
+  return null;
+}
+
+function isMethodNotFoundError(error: unknown): boolean {
+  return /(?:method not found|-32601)/i.test((error as Error)?.message ?? "");
+}
+
+async function continueAcpSession(
+  client: AcpStdioClient,
+  initialize: any,
+  providerSessionId: string,
+  cwd: string
+): Promise<any> {
+  const method = chooseSessionContinuationMethod(initialize);
+  if (!method) {
+    throw new Error("ACP agent cannot continue this session: neither session/resume nor session/load was advertised.");
+  }
+  const params = { sessionId: providerSessionId, cwd, mcpServers: [] };
+  try {
+    return await client.request(method, params);
+  } catch (error) {
+    if (method === "session/resume" && initialize?.agentCapabilities?.loadSession === true && isMethodNotFoundError(error)) {
+      return client.request("session/load", params);
+    }
+    throw error;
+  }
 }
 
 function summarizeAcpConfigOptions(configOptions: any): AcpConfigOption[] {
@@ -619,11 +699,7 @@ async function runAcpStdioJob({ args, job, session, selectedAgent, timeoutSec, a
     });
 
     const sessionResult = providerSessionId
-      ? await client.request("session/resume", {
-        sessionId: providerSessionId,
-        cwd: args.worktree,
-        mcpServers: []
-      })
+      ? await continueAcpSession(client, initialize, providerSessionId, args.worktree)
       : await client.request("session/new", {
         cwd: args.worktree,
         mcpServers: []
@@ -873,6 +949,11 @@ export {
   normalizeAcpNotification,
   describeSessionUpdate,
   summarizeInitializeResult,
+  selectPermissionOutcome,
+  isApprovedPermissionOutcome,
+  chooseSessionContinuationMethod,
+  isMethodNotFoundError,
+  continueAcpSession,
   summarizeAcpConfigOptions,
   summarizeConfigChoices,
   summarizeConfigValue,
@@ -898,6 +979,9 @@ export type {
   AcpConfigOption,
   AcpConfigChoice,
   AcpModelOption,
+  PermissionOption,
+  PermissionOutcome,
+  SessionContinuationMethod,
   SessionUpdateEvent,
   InitializeSummary,
   RunAcpStdioJobArgs,
